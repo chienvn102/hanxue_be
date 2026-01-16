@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 
 const authRoutes = require('./routes/auth');
 const vocabRoutes = require('./routes/vocab');
@@ -11,12 +12,22 @@ const hskRoutes = require('./routes/hsk');
 
 const app = express();
 
-// Security
-app.use(helmet());
-app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    credentials: true
+// Trust proxy (for nginx reverse proxy)
+app.set('trust proxy', 1);
+
+// Security - helmet với config cho audio
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// CORS configuration
+const corsOptions = {
+    origin: process.env.CORS_ORIGIN === '*'
+        ? '*'
+        : (process.env.CORS_ORIGIN || 'http://localhost:3000').split(','),
+    credentials: process.env.CORS_ORIGIN !== '*'
+};
+app.use(cors(corsOptions));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -27,6 +38,9 @@ app.use(limiter);
 
 // Body parser
 app.use(express.json());
+
+// Static files - Audio
+app.use('/audio', express.static(path.join(__dirname, '../public/audio')));
 
 // Health check
 app.get('/health', (req, res) => {
