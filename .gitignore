@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Agent config (không push lên repo)
+.agent/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
