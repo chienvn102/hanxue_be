@@ -149,4 +149,55 @@ router.get('/search/fulltext', async (req, res) => {
     }
 });
 
+// Get examples for vocabulary (with AI fallback)
+router.get('/:id/examples', async (req, res) => {
+    try {
+        const [rows] = await db.execute(
+            `SELECT simplified, pinyin, meaning_vi, examples FROM vocabulary WHERE id = ?`,
+            [req.params.id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Vocabulary not found' });
+        }
+
+        const vocab = rows[0];
+        let examples = [];
+        let source = 'database';
+
+        // Check if we have examples in DB
+        if (vocab.examples) {
+            try {
+                examples = JSON.parse(vocab.examples);
+                if (Array.isArray(examples) && examples.length > 0) {
+                    return res.json({ source, examples });
+                }
+            } catch (e) {
+                // Invalid JSON, continue to AI generation
+            }
+        }
+
+        // No examples in DB, generate with AI
+        try {
+            const gemini = require('../services/gemini');
+            examples = await gemini.generateExamples(
+                vocab.simplified,
+                vocab.pinyin,
+                vocab.meaning_vi
+            );
+            source = 'ai';
+        } catch (aiError) {
+            console.error('AI generation failed:', aiError.message);
+            examples = [];
+            source = 'none';
+        }
+
+        res.json({ source, examples });
+    } catch (err) {
+        console.error('Get examples error:', err);
+        res.status(500).json({ error: 'Failed to get examples' });
+    }
+});
+
 module.exports = router;
+
