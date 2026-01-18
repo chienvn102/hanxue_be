@@ -23,9 +23,10 @@ router.get('/', optionalAuth, async (req, res) => {
 
         if (q) {
             sql += ` AND (simplified LIKE ? OR traditional LIKE ? 
-                     OR pinyin LIKE ? OR meaning_vi LIKE ? OR han_viet LIKE ?)`;
+                     OR pinyin LIKE ? OR pinyin_no_tone LIKE ? 
+                     OR meaning_vi LIKE ? OR han_viet LIKE ?)`;
             const searchTerm = `%${q}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
         sql += ' ORDER BY frequency_rank ASC LIMIT ? OFFSET ?';
@@ -44,9 +45,10 @@ router.get('/', optionalAuth, async (req, res) => {
 
         if (q) {
             countSql += ` AND (simplified LIKE ? OR traditional LIKE ? 
-                         OR pinyin LIKE ? OR meaning_vi LIKE ? OR han_viet LIKE ?)`;
+                         OR pinyin LIKE ? OR pinyin_no_tone LIKE ?
+                         OR meaning_vi LIKE ? OR han_viet LIKE ?)`;
             const searchTerm = `%${q}%`;
-            countParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            countParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
         const [countResult] = await db.execute(countSql, countParams);

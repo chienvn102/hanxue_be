@@ -68,7 +68,7 @@ router.get('/:hanzi/stroke', async (req, res) => {
     }
 });
 
-// Get characters by word
+// Get characters by word (with stroke data)
 router.get('/word/:word', async (req, res) => {
     try {
         const { word } = req.params;
@@ -91,12 +91,17 @@ router.get('/word/:word', async (req, res) => {
             if (!char) return { hanzi: c, found: false };
 
             return {
+                id: char.id,
                 hanzi: char.hanzi,
                 pinyinMain: char.pinyin_main,
+                pinyinVariants: char.pinyin_variants ? JSON.parse(char.pinyin_variants) : [],
                 hanViet: char.han_viet,
                 meaningVi: char.meaning_vi,
+                meaningEn: char.meaning_en,
                 strokeCount: char.stroke_count,
+                strokeOrder: char.stroke_order ? JSON.parse(char.stroke_order) : [],
                 radical: char.radical,
+                components: char.components ? JSON.parse(char.components) : [],
                 found: true
             };
         });
