@@ -17,7 +17,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
  */
 async function generateExamples(simplified, pinyin, meaningVi) {
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
         const prompt = `Tạo 3 câu ví dụ đơn giản cho từ tiếng Trung "${simplified}" (${pinyin}).
 Nghĩa: ${meaningVi || 'không rõ'}
