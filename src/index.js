@@ -52,7 +52,8 @@ app.get('/health', (req, res) => {
 
 // Routes
 // Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+app.use('/api-docs/', swaggerUi.serve);
+app.get('/api-docs/', swaggerUi.setup(swaggerSpec, {
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'HanXue API Documentation'
