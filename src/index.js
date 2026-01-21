@@ -51,7 +51,11 @@ app.get('/health', (req, res) => {
 });
 
 // Routes
-// Swagger API Documentation
+// Swagger API Documentation  
+// Redirect /api-docs -> /api-docs/ (preserve path prefix behind reverse proxy)
+app.get('/api-docs', (req, res) => {
+    res.redirect(req.originalUrl + '/');
+});
 app.use('/api-docs/', swaggerUi.serve);
 app.get('/api-docs/', swaggerUi.setup(swaggerSpec, {
     explorer: true,
