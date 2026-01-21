@@ -4,6 +4,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 
 const authRoutes = require('./routes/auth');
 const vocabRoutes = require('./routes/vocab');
@@ -49,6 +51,13 @@ app.get('/health', (req, res) => {
 });
 
 // Routes
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'HanXue API Documentation'
+}));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/vocab', vocabRoutes);
 app.use('/api/characters', characterRoutes);

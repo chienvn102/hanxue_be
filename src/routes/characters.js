@@ -3,6 +3,33 @@ const db = require('../config/database');
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/characters/{hanzi}:
+ *   get:
+ *     summary: Get character by hanzi
+ *     description: Retrieve detailed information about a Chinese character including stroke order
+ *     tags: [Characters]
+ *     parameters:
+ *       - in: path
+ *         name: hanzi
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Single Chinese character
+ *         example: 你
+ *     responses:
+ *       200:
+ *         description: Character details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Character'
+ *       404:
+ *         description: Character not found
+ *       500:
+ *         description: Server error
+ */
 // Get character by hanzi
 router.get('/:hanzi', async (req, res) => {
     try {

@@ -6,6 +6,53 @@ const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register new user
+ *     description: Create a new user account
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *                 example: password123
+ *               displayName:
+ *                 type: string
+ *                 example: John Doe
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: User created
+ *                 userId:
+ *                   type: integer
+ *                   example: 1
+ *       400:
+ *         description: Invalid input or email exists
+ *       500:
+ *         description: Server error
+ */
 // Register
 router.post('/register', async (req, res) => {
     try {

@@ -1,6 +1,5 @@
 /**
  * Flashcard API Routes
- * GET /api/flashcard - Get random vocabulary for flashcard session
  */
 
 const express = require('express');
@@ -9,12 +8,44 @@ const db = require('../config/database');
 const router = express.Router();
 
 /**
- * GET /api/flashcard
- * Query params:
- *   - hsk: HSK level (1-6), optional
- *   - limit: Number of words (default 20, max 100)
- * 
- * Returns random vocabulary for flashcard session
+ * @swagger
+ * /api/flashcard:
+ *   get:
+ *     summary: Get flashcard session
+ *     description: Get random vocabulary words for flashcard study session
+ *     tags: [Flashcard]
+ *     parameters:
+ *       - in: query
+ *         name: hsk
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 6
+ *         description: Filter by HSK level
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *         description: Number of flashcards to return
+ *     responses:
+ *       200:
+ *         description: Flashcard session data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 count:
+ *                   type: integer
+ *                   example: 20
+ *                 flashcards:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Vocabulary'
+ *       500:
+ *         description: Server error
  */
 router.get('/', async (req, res) => {
     try {

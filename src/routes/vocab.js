@@ -4,6 +4,60 @@ const { optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/vocab:
+ *   get:
+ *     summary: Get vocabulary list
+ *     description: Retrieve a paginated list of vocabulary with optional filtering by HSK level and search query
+ *     tags: [Vocabulary]
+ *     parameters:
+ *       - in: query
+ *         name: hsk
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 6
+ *         description: Filter by HSK level (1-6)
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Search query (searches in simplified, traditional, pinyin, meaning)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *         description: Items per page
+ *     responses:
+ *       200:
+ *         description: Paginated vocabulary list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Vocabulary'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 // Get vocabulary list
 router.get('/', optionalAuth, async (req, res) => {
     try {
@@ -80,6 +134,32 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/vocab/{id}:
+ *   get:
+ *     summary: Get vocabulary by ID
+ *     description: Retrieve detailed information about a single vocabulary word
+ *     tags: [Vocabulary]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Vocabulary ID
+ *     responses:
+ *       200:
+ *         description: Vocabulary details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Vocabulary'
+ *       404:
+ *         description: Vocabulary not found
+ *       500:
+ *         description: Server error
+ */
 // Get single vocabulary
 router.get('/:id', async (req, res) => {
     try {

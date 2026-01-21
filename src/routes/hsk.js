@@ -4,6 +4,45 @@ const { authMiddleware, optionalAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/hsk/tests:
+ *   get:
+ *     summary: Get HSK tests list
+ *     description: Retrieve available HSK tests, optionally filtered by level
+ *     tags: [HSK]
+ *     parameters:
+ *       - in: query
+ *         name: level
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 6
+ *         description: Filter by HSK level
+ *     responses:
+ *       200:
+ *         description: List of HSK tests
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       title:
+ *                         type: string
+ *                       hskLevel:
+ *                         type: integer
+ *                       durationMins:
+ *                         type: integer
+ *       500:
+ *         description: Server error
+ */
 // Get HSK tests list
 router.get('/tests', async (req, res) => {
     try {
