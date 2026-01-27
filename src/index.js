@@ -4,8 +4,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./config/swagger');
 
 const authRoutes = require('./routes/auth');
 const vocabRoutes = require('./routes/vocab');
@@ -51,19 +49,7 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Routes
-// Swagger API Documentation  
-// Redirect /api-docs -> /api-docs/ (use 307 with relative path for reverse proxy)
-app.get('/api-docs', (req, res) => {
-    res.redirect(307, './api-docs/');
-});
-app.use('/api-docs/', swaggerUi.serve);
-app.get('/api-docs/', swaggerUi.setup(swaggerSpec, {
-    explorer: true,
-    customCss: '.swagger-ui .topbar { display: none }',
-    customSiteTitle: 'HanXue API Documentation'
-}));
-
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/vocab', vocabRoutes);
 app.use('/api/characters', characterRoutes);
