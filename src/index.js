@@ -59,6 +59,7 @@ app.use('/api/flashcard', flashcardRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/lessons', require('./routes/lessons'));
+app.use('/api/admin', require('./routes/admin'));
 app.use('/api/user', userRoutes);
 
 // 404 handler
