@@ -44,6 +44,8 @@ app.use(express.json());
 
 // Static files - Audio
 app.use('/audio', express.static(path.join(__dirname, '../public/audio')));
+// Static files - Uploads (for admin uploaded files)
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -61,6 +63,7 @@ app.use('/api/courses', require('./routes/courses'));
 app.use('/api/lessons', require('./routes/lessons'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/user', userRoutes);
+app.use('/api/upload', require('./routes/upload'));
 
 // 404 handler
 app.use((req, res) => {
