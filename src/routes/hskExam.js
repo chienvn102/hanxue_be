@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const hskExamController = require('../controllers/hskExam.controller');
 const { authMiddleware } = require('../middleware/auth');
-const roleMiddleware = require('../middleware/role.middleware');
+const adminMiddleware = require('../middleware/admin.middleware');
 
 // ============================================================
 // PUBLIC ROUTES (Client - Taking Exams)
@@ -17,7 +17,7 @@ const roleMiddleware = require('../middleware/role.middleware');
 router.get('/public', hskExamController.getPublicExamList);
 
 // ============================================================
-// AUTHENTICATED USER ROUTES
+// AUTHENTICATED USER ROUTES (for students taking exams)
 // ============================================================
 
 // Start an exam (creates attempt)
@@ -36,51 +36,52 @@ router.get('/attempts/:attemptId/result', authMiddleware, hskExamController.getE
 router.get('/history', authMiddleware, hskExamController.getUserHistory);
 
 // ============================================================
-// ADMIN ROUTES - Exam Management
+// ADMIN ROUTES - Exam Management (using adminMiddleware)
 // ============================================================
 
 // List all exams (admin)
-router.get('/', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.listExams);
+router.get('/', adminMiddleware, hskExamController.listExams);
 
 // Get exam detail with sections and questions
-router.get('/:id', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.getExamDetail);
+router.get('/:id', adminMiddleware, hskExamController.getExamDetail);
 
 // Create new exam
-router.post('/', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.createExam);
+router.post('/', adminMiddleware, hskExamController.createExam);
 
 // Update exam
-router.put('/:id', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.updateExam);
+router.put('/:id', adminMiddleware, hskExamController.updateExam);
 
 // Delete exam
-router.delete('/:id', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.deleteExam);
+router.delete('/:id', adminMiddleware, hskExamController.deleteExam);
 
 // ============================================================
 // ADMIN ROUTES - Section Management
 // ============================================================
 
 // Create section for exam
-router.post('/:examId/sections', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.createSection);
+router.post('/:examId/sections', adminMiddleware, hskExamController.createSection);
 
 // Update section
-router.put('/sections/:sectionId', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.updateSection);
+router.put('/sections/:sectionId', adminMiddleware, hskExamController.updateSection);
 
 // Delete section
-router.delete('/sections/:sectionId', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.deleteSection);
+router.delete('/sections/:sectionId', adminMiddleware, hskExamController.deleteSection);
 
 // ============================================================
 // ADMIN ROUTES - Question Management
 // ============================================================
 
 // Get questions for section
-router.get('/sections/:sectionId/questions', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.getQuestions);
+router.get('/sections/:sectionId/questions', adminMiddleware, hskExamController.getQuestions);
 
 // Create question for section
-router.post('/sections/:sectionId/questions', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.createQuestion);
+router.post('/sections/:sectionId/questions', adminMiddleware, hskExamController.createQuestion);
 
 // Update question
-router.put('/questions/:questionId', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.updateQuestion);
+router.put('/questions/:questionId', adminMiddleware, hskExamController.updateQuestion);
 
 // Delete question
-router.delete('/questions/:questionId', authMiddleware, roleMiddleware(['admin', 'super_admin']), hskExamController.deleteQuestion);
+router.delete('/questions/:questionId', adminMiddleware, hskExamController.deleteQuestion);
 
 module.exports = router;
+
