@@ -17,8 +17,12 @@ async function getProfile(req, res) {
             displayName: user.display_name,
             avatarUrl: user.avatar_url,
             targetHsk: user.target_hsk,
-            totalXp: user.total_xp,
-            currentStreak: user.current_streak,
+            totalXp: user.total_xp || 0,
+            currentStreak: user.current_streak || 0,
+            longestStreak: user.longest_streak || 0,
+            totalStudyDays: user.total_study_days || 0,
+            lastStudyDate: user.last_study_date,
+            nativeLanguage: user.native_language,
             isPremium: !!user.is_premium,
             createdAt: user.created_at
         });
@@ -34,11 +38,12 @@ async function getProfile(req, res) {
 async function updateProfile(req, res) {
     try {
         const userId = req.user.userId;
-        const { displayName, targetHsk } = req.body;
+        const { displayName, targetHsk, nativeLanguage } = req.body;
 
         const updated = await UserModel.updateProfile(userId, {
             displayName,
-            targetHsk
+            targetHsk,
+            nativeLanguage
         });
 
         if (!updated) {

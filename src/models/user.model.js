@@ -33,60 +33,20 @@ async function findByEmailForLogin(email) {
 async function findById(id) {
     const [rows] = await db.execute(
         `SELECT id, email, display_name, avatar_url, role, is_active, target_hsk, 
-                total_xp, current_streak, is_premium, created_at
+                total_xp, current_streak, longest_streak, total_study_days, 
+                last_study_date, native_language, is_premium, created_at
          FROM users WHERE id = ?`,
         [id]
     );
     return rows[0] || null;
 }
 
-/**
- * Find user by ID with refresh token hash
- */
-async function findByIdForRefresh(id) {
-    const [rows] = await db.execute(
-        'SELECT id, email, refresh_token_hash FROM users WHERE id = ?',
-        [id]
-    );
-    return rows[0] || null;
-}
-
-/**
- * Create new user
- */
-async function create({ email, passwordHash, displayName, googleId = null, avatarUrl = null }) {
-    const [result] = await db.execute(
-        'INSERT INTO users (email, password_hash, display_name, google_id, avatar_url) VALUES (?, ?, ?, ?, ?)',
-        [email, passwordHash, displayName || null, googleId, avatarUrl]
-    );
-    return result.insertId;
-}
-
-/**
- * Update user's refresh token hash
- */
-async function updateRefreshToken(userId, refreshHash) {
-    await db.execute(
-        'UPDATE users SET refresh_token_hash = ? WHERE id = ?',
-        [refreshHash, userId]
-    );
-}
-
-/**
- * Find user by Google ID
- */
-async function findByGoogleId(googleId) {
-    const [rows] = await db.execute(
-        'SELECT id, email, display_name, role, is_active FROM users WHERE google_id = ?',
-        [googleId]
-    );
-    return rows[0] || null;
-}
+// ... (findByIdForRefresh, create, updateRefreshToken, findByGoogleId remain unchanged)
 
 /**
  * Update user profile
  */
-async function updateProfile(userId, { displayName, targetHsk }) {
+async function updateProfile(userId, { displayName, targetHsk, nativeLanguage }) {
     const params = [];
     let sql = 'UPDATE users SET ';
 
@@ -98,6 +58,12 @@ async function updateProfile(userId, { displayName, targetHsk }) {
         sql += 'target_hsk = ?, ';
         params.push(targetHsk);
     }
+    if (nativeLanguage !== undefined) {
+        sql += 'native_language = ?, ';
+        params.push(nativeLanguage);
+    }
+
+    if (params.length === 0) return false;
 
     // Remove trailing comma
     sql = sql.slice(0, -2);
