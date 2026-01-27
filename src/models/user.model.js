@@ -41,7 +41,49 @@ async function findById(id) {
     return rows[0] || null;
 }
 
-// ... (findByIdForRefresh, create, updateRefreshToken, findByGoogleId remain unchanged)
+/**
+ * Find user by ID for refresh token
+ */
+async function findByIdForRefresh(id) {
+    const [rows] = await db.execute(
+        'SELECT id, email, display_name, role, is_active FROM users WHERE id = ?',
+        [id]
+    );
+    return rows[0] || null;
+}
+
+/**
+ * Create new user
+ */
+async function create({ email, passwordHash, displayName, googleId = null }) {
+    const [result] = await db.execute(
+        `INSERT INTO users (email, password_hash, display_name, google_id, created_at) 
+         VALUES (?, ?, ?, ?, NOW())`,
+        [email, passwordHash, displayName || email.split('@')[0], googleId]
+    );
+    return result.insertId;
+}
+
+/**
+ * Update refresh token for user
+ */
+async function updateRefreshToken(userId, refreshToken) {
+    await db.execute(
+        'UPDATE users SET refresh_token = ? WHERE id = ?',
+        [refreshToken, userId]
+    );
+}
+
+/**
+ * Find user by Google ID
+ */
+async function findByGoogleId(googleId) {
+    const [rows] = await db.execute(
+        'SELECT id, email, display_name, avatar_url, role, is_active FROM users WHERE google_id = ?',
+        [googleId]
+    );
+    return rows[0] || null;
+}
 
 /**
  * Update user profile
