@@ -159,9 +159,59 @@ async function getExamples(req, res) {
     }
 }
 
+/**
+ * POST /api/vocab (Admin)
+ */
+async function create(req, res) {
+    try {
+        const id = await VocabModel.create(req.body);
+        const vocab = await VocabModel.getById(id);
+        res.status(201).json({ success: true, data: formatVocab(vocab, true) });
+    } catch (err) {
+        console.error('Create vocab error:', err);
+        res.status(500).json({ success: false, message: 'Failed to create vocabulary', error: err.message });
+    }
+}
+
+/**
+ * PUT /api/vocab/:id (Admin)
+ */
+async function update(req, res) {
+    try {
+        const affected = await VocabModel.update(req.params.id, req.body);
+        if (affected === 0) {
+            return res.status(404).json({ success: false, message: 'Vocabulary not found or no changes made' });
+        }
+        const vocab = await VocabModel.getById(req.params.id);
+        res.json({ success: true, data: formatVocab(vocab, true) });
+    } catch (err) {
+        console.error('Update vocab error:', err);
+        res.status(500).json({ success: false, message: 'Failed to update vocabulary', error: err.message });
+    }
+}
+
+/**
+ * DELETE /api/vocab/:id (Admin)
+ */
+async function deleteVocab(req, res) {
+    try {
+        const affected = await VocabModel.deleteById(req.params.id);
+        if (affected === 0) {
+            return res.status(404).json({ success: false, message: 'Vocabulary not found' });
+        }
+        res.json({ success: true, message: 'Vocabulary deleted' });
+    } catch (err) {
+        console.error('Delete vocab error:', err);
+        res.status(500).json({ success: false, message: 'Failed to delete vocabulary', error: err.message });
+    }
+}
+
 module.exports = {
     list,
     getById,
     searchFulltext,
-    getExamples
+    getExamples,
+    create,
+    update,
+    deleteVocab
 };

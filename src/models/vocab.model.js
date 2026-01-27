@@ -98,9 +98,92 @@ async function getWithExamples(id) {
     return rows[0] || null;
 }
 
+/**
+ * Create new vocabulary
+ */
+async function create(data) {
+    const {
+        simplified, traditional, pinyin, pinyin_no_tone,
+        han_viet, meaning_vi, meaning_en, hsk_level,
+        word_type, audio_url, frequency_rank, examples
+    } = data;
+
+    const [result] = await db.execute(
+        `INSERT INTO vocabulary 
+        (simplified, traditional, pinyin, pinyin_no_tone, han_viet, meaning_vi, meaning_en, hsk_level, word_type, audio_url, frequency_rank, examples)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            simplified,
+            traditional || null,
+            pinyin,
+            pinyin_no_tone || pinyin?.replace(/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/g, c =>
+                'āáǎà'.includes(c) ? 'a' : 'ēéěè'.includes(c) ? 'e' : 'īíǐì'.includes(c) ? 'i' :
+                    'ōóǒò'.includes(c) ? 'o' : 'ūúǔù'.includes(c) ? 'u' : 'ǖǘǚǜ'.includes(c) ? 'v' : c
+            ) || null,
+            han_viet || null,
+            meaning_vi,
+            meaning_en || null,
+            hsk_level || 1,
+            word_type || null,
+            audio_url || null,
+            frequency_rank || 99999,
+            examples ? JSON.stringify(examples) : null
+        ]
+    );
+    return result.insertId;
+}
+
+/**
+ * Update vocabulary by ID
+ */
+async function update(id, data) {
+    const allowedFields = [
+        'simplified', 'traditional', 'pinyin', 'pinyin_no_tone',
+        'han_viet', 'meaning_vi', 'meaning_en', 'hsk_level',
+        'word_type', 'audio_url', 'frequency_rank', 'examples'
+    ];
+
+    const updates = [];
+    const values = [];
+
+    for (const field of allowedFields) {
+        if (data[field] !== undefined) {
+            updates.push(`${field} = ?`);
+            if (field === 'examples' && typeof data[field] === 'object') {
+                values.push(JSON.stringify(data[field]));
+            } else {
+                values.push(data[field]);
+            }
+        }
+    }
+
+    if (updates.length === 0) return 0;
+
+    values.push(id);
+    const [result] = await db.execute(
+        `UPDATE vocabulary SET ${updates.join(', ')} WHERE id = ?`,
+        values
+    );
+    return result.affectedRows;
+}
+
+/**
+ * Delete vocabulary by ID (hard delete)
+ */
+async function deleteById(id) {
+    const [result] = await db.execute(
+        'DELETE FROM vocabulary WHERE id = ?',
+        [id]
+    );
+    return result.affectedRows;
+}
+
 module.exports = {
     getList,
     getById,
     searchFulltext,
-    getWithExamples
+    getWithExamples,
+    create,
+    update,
+    deleteById
 };

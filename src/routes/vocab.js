@@ -4,6 +4,7 @@
 
 const express = require('express');
 const { optionalAuth } = require('../middleware/auth');
+const adminMiddleware = require('../middleware/admin.middleware');
 const vocabController = require('../controllers/vocab.controller');
 
 const router = express.Router();
@@ -19,5 +20,10 @@ router.get('/:id', vocabController.getById);
 
 // Get examples for vocabulary
 router.get('/:id/examples', vocabController.getExamples);
+
+// ========== Admin Routes ==========
+router.post('/', adminMiddleware, vocabController.create);
+router.put('/:id', adminMiddleware, vocabController.update);
+router.delete('/:id', adminMiddleware, vocabController.deleteVocab);
 
 module.exports = router;
