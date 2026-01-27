@@ -5,6 +5,7 @@
 
 const ProgressModel = require('../models/progress.model');
 const srs = require('../services/srs');
+const streakService = require('../services/streak.service');
 
 /**
  * GET /api/progress/due
@@ -149,6 +150,18 @@ async function submitReview(req, res) {
                 : responseMs || currentProgress.avg_response_ms;
 
             await ProgressModel.updateProgress(userId, vocabId, newValues, isCorrect, newAvgMs);
+        }
+
+        // Update streak and XP after successful review
+        try {
+            await streakService.updateStreak(userId);
+            const xp = streakService.calculateXP(quality);
+            if (xp > 0) {
+                await streakService.addXP(userId, xp);
+            }
+        } catch (streakErr) {
+            // Log but don't fail the review
+            console.error('Streak/XP update error:', streakErr);
         }
 
         res.json({
