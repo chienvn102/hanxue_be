@@ -38,7 +38,7 @@ const Lesson = {
             `INSERT INTO lessons 
             (course_id, title, description, youtube_id, duration, order_index) 
             VALUES (?, ?, ?, ?, ?, ?)`,
-            [course_id, title, description, youtube_id, duration || 0, order_index || 0]
+            [course_id, title, description || null, youtube_id, duration || 0, order_index || 0]
         );
         return result.insertId;
     },
