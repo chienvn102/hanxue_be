@@ -65,6 +65,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/user', userRoutes);
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/grammar', require('./routes/grammar'));
+app.use('/api/hsk-exams', require('./routes/hskExam'));
 
 // 404 handler
 app.use((req, res) => {
