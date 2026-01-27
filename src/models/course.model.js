@@ -32,7 +32,7 @@ const Course = {
             `INSERT INTO courses 
             (hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index) 
             VALUES (?, ?, ?, ?, ?, ?)`,
-            [hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index || 0]
+            [hsk_level, title, description, thumbnail_url, prerequisite_course_id || null, order_index || 0]
         );
         return result.insertId;
     },

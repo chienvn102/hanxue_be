@@ -47,7 +47,10 @@ exports.createCourse = async (req, res) => {
         res.status(201).json({ success: true, data: { id, ...req.body } });
     } catch (error) {
         console.error('Create course error:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({
+            success: false,
+            message: 'Server error: ' + (error.message || error.sqlMessage || 'Unknown error')
+        });
     }
 };
 
