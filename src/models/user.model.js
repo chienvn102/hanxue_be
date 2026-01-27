@@ -83,6 +83,52 @@ async function findByGoogleId(googleId) {
     return rows[0] || null;
 }
 
+/**
+ * Update user profile
+ */
+async function updateProfile(userId, { displayName, targetHsk }) {
+    const params = [];
+    let sql = 'UPDATE users SET ';
+
+    if (displayName !== undefined) {
+        sql += 'display_name = ?, ';
+        params.push(displayName);
+    }
+    if (targetHsk !== undefined) {
+        sql += 'target_hsk = ?, ';
+        params.push(targetHsk);
+    }
+
+    // Remove trailing comma
+    sql = sql.slice(0, -2);
+    sql += ' WHERE id = ?';
+    params.push(userId);
+
+    const [result] = await db.execute(sql, params);
+    return result.affectedRows > 0;
+}
+
+/**
+ * Find user by ID with password (for password change)
+ */
+async function findByIdWithPassword(id) {
+    const [rows] = await db.execute(
+        'SELECT id, password_hash FROM users WHERE id = ?',
+        [id]
+    );
+    return rows[0] || null;
+}
+
+/**
+ * Update password
+ */
+async function updatePassword(userId, newHash) {
+    await db.execute(
+        'UPDATE users SET password_hash = ? WHERE id = ?',
+        [newHash, userId]
+    );
+}
+
 module.exports = {
     findByEmail,
     findByEmailForLogin,
@@ -90,5 +136,8 @@ module.exports = {
     findByIdForRefresh,
     create,
     updateRefreshToken,
-    findByGoogleId
+    findByGoogleId,
+    updateProfile,
+    findByIdWithPassword,
+    updatePassword
 };

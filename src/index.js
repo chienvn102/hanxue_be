@@ -11,6 +11,7 @@ const characterRoutes = require('./routes/characters');
 const hskRoutes = require('./routes/hsk');
 const flashcardRoutes = require('./routes/flashcard');
 const progressRoutes = require('./routes/progress');
+const userRoutes = require('./routes/user');
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use('/api/characters', characterRoutes);
 app.use('/api/hsk', hskRoutes);
 app.use('/api/flashcard', flashcardRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api/user', userRoutes);
 
 // 404 handler
 app.use((req, res) => {
