@@ -57,6 +57,8 @@ app.use('/api/characters', characterRoutes);
 app.use('/api/hsk', hskRoutes);
 app.use('/api/flashcard', flashcardRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api/courses', require('./routes/courses'));
+app.use('/api/lessons', require('./routes/lessons'));
 app.use('/api/user', userRoutes);
 
 // 404 handler
