@@ -8,9 +8,11 @@ const roleMiddleware = require('../middleware/role.middleware');
 router.get('/', authMiddleware, courseController.getCourses);
 router.get('/:id', authMiddleware, courseController.getCourse);
 
+const adminMiddleware = require('../middleware/admin.middleware');
+
 // Admin routes
-router.post('/', authMiddleware, roleMiddleware(['admin']), courseController.createCourse);
-router.put('/:id', authMiddleware, roleMiddleware(['admin']), courseController.updateCourse);
-router.delete('/:id', authMiddleware, roleMiddleware(['admin']), courseController.deleteCourse);
+router.post('/', adminMiddleware, roleMiddleware(['admin']), courseController.createCourse);
+router.put('/:id', adminMiddleware, roleMiddleware(['admin']), courseController.updateCourse);
+router.delete('/:id', adminMiddleware, roleMiddleware(['admin']), courseController.deleteCourse);
 
 module.exports = router;

@@ -8,15 +8,17 @@ const roleMiddleware = require('../middleware/role.middleware');
 router.get('/course/:courseId', authMiddleware, lessonController.getLessonsByCourse);
 router.get('/:id', authMiddleware, lessonController.getLessonDetails);
 
+const adminMiddleware = require('../middleware/admin.middleware');
+
 // Admin routes - Lessons
-router.post('/', authMiddleware, roleMiddleware(['admin']), lessonController.createLesson);
-router.put('/:id', authMiddleware, roleMiddleware(['admin']), lessonController.updateLesson);
-router.delete('/:id', authMiddleware, roleMiddleware(['admin']), lessonController.deleteLesson);
+router.post('/', adminMiddleware, roleMiddleware(['admin']), lessonController.createLesson);
+router.put('/:id', adminMiddleware, roleMiddleware(['admin']), lessonController.updateLesson);
+router.delete('/:id', adminMiddleware, roleMiddleware(['admin']), lessonController.deleteLesson);
 
 // Admin routes - Contents
-router.post('/:id/contents', authMiddleware, roleMiddleware(['admin']), lessonController.addContent);
+router.post('/:id/contents', adminMiddleware, roleMiddleware(['admin']), lessonController.addContent);
 
 // Admin routes - Questions
-router.post('/:id/questions', authMiddleware, roleMiddleware(['admin']), lessonController.addQuestion);
+router.post('/:id/questions', adminMiddleware, roleMiddleware(['admin']), lessonController.addQuestion);
 
 module.exports = router;
