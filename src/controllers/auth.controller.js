@@ -63,9 +63,14 @@ async function login(req, res) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        // Check active status
+        if (!user.is_active) {
+            return res.status(403).json({ error: 'Account is disabled. Please contact support.' });
+        }
+
         // Generate tokens
         const accessToken = jwt.sign(
-            { userId: user.id, email: user.email },
+            { userId: user.id, email: user.email, role: user.role || 'user' },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
         );
@@ -87,8 +92,9 @@ async function login(req, res) {
                 id: user.id,
                 email: user.email,
                 displayName: user.display_name,
+                role: user.role,
                 targetHsk: user.target_hsk,
-                isPremium: user.is_premium
+                isPremium: !!user.is_premium
             }
         });
     } catch (err) {

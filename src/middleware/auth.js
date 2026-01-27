@@ -36,4 +36,22 @@ const optionalAuth = async (req, res, next) => {
     }
 };
 
-module.exports = { authMiddleware, optionalAuth };
+/**
+ * Middleware to check user role
+ * @param {string[]} roles - Array of allowed roles
+ */
+const roleCheck = (roles = []) => {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        if (roles.length && !roles.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Forbidden: Insufficient permissions' });
+        }
+
+        next();
+    };
+};
+
+module.exports = { authMiddleware, optionalAuth, roleCheck };

@@ -10,7 +10,7 @@ const db = require('../config/database');
  */
 async function findByEmail(email) {
     const [rows] = await db.execute(
-        'SELECT id FROM users WHERE email = ?',
+        'SELECT id, email, password_hash, display_name, role, is_active, google_id, avatar_url FROM users WHERE email = ?',
         [email]
     );
     return rows[0] || null;
@@ -21,7 +21,7 @@ async function findByEmail(email) {
  */
 async function findByEmailForLogin(email) {
     const [rows] = await db.execute(
-        'SELECT id, email, password_hash, display_name, target_hsk, is_premium FROM users WHERE email = ?',
+        'SELECT id, email, password_hash, display_name, role, is_active, target_hsk, is_premium FROM users WHERE email = ?',
         [email]
     );
     return rows[0] || null;
@@ -32,7 +32,7 @@ async function findByEmailForLogin(email) {
  */
 async function findById(id) {
     const [rows] = await db.execute(
-        `SELECT id, email, display_name, avatar_url, target_hsk, 
+        `SELECT id, email, display_name, avatar_url, role, is_active, target_hsk, 
                 total_xp, current_streak, is_premium, created_at
          FROM users WHERE id = ?`,
         [id]
@@ -54,10 +54,10 @@ async function findByIdForRefresh(id) {
 /**
  * Create new user
  */
-async function create({ email, passwordHash, displayName }) {
+async function create({ email, passwordHash, displayName, googleId = null, avatarUrl = null }) {
     const [result] = await db.execute(
-        'INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)',
-        [email, passwordHash, displayName || null]
+        'INSERT INTO users (email, password_hash, display_name, google_id, avatar_url) VALUES (?, ?, ?, ?, ?)',
+        [email, passwordHash, displayName || null, googleId, avatarUrl]
     );
     return result.insertId;
 }
@@ -72,11 +72,23 @@ async function updateRefreshToken(userId, refreshHash) {
     );
 }
 
+/**
+ * Find user by Google ID
+ */
+async function findByGoogleId(googleId) {
+    const [rows] = await db.execute(
+        'SELECT id, email, display_name, role, is_active FROM users WHERE google_id = ?',
+        [googleId]
+    );
+    return rows[0] || null;
+}
+
 module.exports = {
     findByEmail,
     findByEmailForLogin,
     findById,
     findByIdForRefresh,
     create,
-    updateRefreshToken
+    updateRefreshToken,
+    findByGoogleId
 };
