@@ -6,6 +6,10 @@ const { authMiddleware } = require('../middleware/auth');
 // All routes require authentication
 router.use(authMiddleware);
 
+// Get all saved vocab IDs (for checking saved status on frontend)
+// MUST be before /:id routes to avoid matching 'saved-ids' as an id
+router.get('/saved-ids', notebookController.getSavedVocabIds);
+
 // Notebook CRUD
 router.get('/', notebookController.getNotebooks);
 router.post('/', notebookController.createNotebook);
@@ -16,8 +20,5 @@ router.delete('/:id', notebookController.deleteNotebook);
 router.get('/:id/items', notebookController.getNotebookItems);
 router.post('/:id/items', notebookController.addVocabToNotebook);
 router.delete('/:id/items/:vocabId', notebookController.removeVocabFromNotebook);
-
-// Get all saved vocab IDs (for checking saved status on frontend)
-router.get('/saved-ids', notebookController.getSavedVocabIds);
 
 module.exports = router;

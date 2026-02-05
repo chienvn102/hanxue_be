@@ -127,12 +127,12 @@ const Notebook = {
     // Get all saved vocab IDs for user (for quick checking)
     getSavedVocabIds: async (userId) => {
         const sql = `
-            SELECT DISTINCT ni.vocab_id FROM notebook_items ni
+            SELECT DISTINCT ni.vocabulary_id FROM notebook_items ni
             JOIN notebooks n ON ni.notebook_id = n.id
             WHERE n.user_id = ?
         `;
         const [rows] = await db.execute(sql, [userId]);
-        return rows.map(r => r.vocab_id);
+        return rows.map(r => r.vocabulary_id);
     },
 
     // Update mastery level
