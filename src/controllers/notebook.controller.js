@@ -4,7 +4,7 @@ const notebookController = {
     // Get all notebooks for current user
     getNotebooks: async (req, res) => {
         try {
-            const notebooks = await Notebook.findAllByUser(req.user.id);
+            const notebooks = await Notebook.findAllByUser(req.user.userId);
             res.json({ success: true, data: notebooks });
         } catch (error) {
             console.error('Error getting notebooks:', error);
@@ -21,7 +21,7 @@ const notebookController = {
             }
 
             const id = await Notebook.create({
-                user_id: req.user.id,
+                user_id: req.user.userId,
                 name,
                 color
             });
@@ -43,7 +43,7 @@ const notebookController = {
             const { id } = req.params;
             const { name, color } = req.body;
 
-            const affected = await Notebook.update(id, req.user.id, { name, color });
+            const affected = await Notebook.update(id, req.user.userId, { name, color });
             if (affected === 0) {
                 return res.status(404).json({ success: false, message: 'Không tìm thấy sổ tay' });
             }
@@ -59,7 +59,7 @@ const notebookController = {
     deleteNotebook: async (req, res) => {
         try {
             const { id } = req.params;
-            const affected = await Notebook.delete(id, req.user.id);
+            const affected = await Notebook.delete(id, req.user.userId);
 
             if (affected === 0) {
                 return res.status(400).json({
@@ -79,7 +79,7 @@ const notebookController = {
     getNotebookItems: async (req, res) => {
         try {
             const { id } = req.params;
-            const items = await Notebook.getItems(id, req.user.id);
+            const items = await Notebook.getItems(id, req.user.userId);
             res.json({ success: true, data: items });
         } catch (error) {
             console.error('Error getting notebook items:', error);
@@ -113,7 +113,7 @@ const notebookController = {
     removeVocabFromNotebook: async (req, res) => {
         try {
             const { id, vocabId } = req.params;
-            const affected = await Notebook.removeItem(id, vocabId, req.user.id);
+            const affected = await Notebook.removeItem(id, vocabId, req.user.userId);
 
             if (affected === 0) {
                 return res.status(404).json({ success: false, message: 'Không tìm thấy từ trong sổ tay' });
@@ -132,7 +132,7 @@ const notebookController = {
             const { id } = req.params; // vocab id
 
             // Get or create default notebook
-            const notebook = await Notebook.getOrCreateDefault(req.user.id);
+            const notebook = await Notebook.getOrCreateDefault(req.user.userId);
 
             // Add vocab to default notebook
             const result = await Notebook.addItem(notebook.id, id);
@@ -157,8 +157,8 @@ const notebookController = {
             const { id } = req.params; // vocab id
 
             // Get default notebook and remove
-            const notebook = await Notebook.getOrCreateDefault(req.user.id);
-            await Notebook.removeItem(notebook.id, id, req.user.id);
+            const notebook = await Notebook.getOrCreateDefault(req.user.userId);
+            await Notebook.removeItem(notebook.id, id, req.user.userId);
 
             res.json({ success: true, message: 'Đã bỏ lưu' });
         } catch (error) {
@@ -170,7 +170,7 @@ const notebookController = {
     // Get all saved vocab IDs for current user
     getSavedVocabIds: async (req, res) => {
         try {
-            const ids = await Notebook.getSavedVocabIds(req.user.id);
+            const ids = await Notebook.getSavedVocabIds(req.user.userId);
             res.json({ success: true, data: ids });
         } catch (error) {
             console.error('Error getting saved vocab ids:', error);
