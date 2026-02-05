@@ -26,4 +26,10 @@ router.post('/', adminMiddleware, vocabController.create);
 router.put('/:id', adminMiddleware, vocabController.update);
 router.delete('/:id', adminMiddleware, vocabController.deleteVocab);
 
+// ========== Notebook Save/Unsave ==========
+const { authMiddleware } = require('../middleware/auth');
+const notebookController = require('../controllers/notebook.controller');
+router.post('/:id/save', authMiddleware, notebookController.saveVocab);
+router.delete('/:id/save', authMiddleware, notebookController.unsaveVocab);
+
 module.exports = router;
