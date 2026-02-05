@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const lessonController = require('../controllers/lesson.controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, optionalAuth } = require('../middleware/auth');
 const roleMiddleware = require('../middleware/role.middleware');
 
-// Public/User routes
-router.get('/course/:courseId', authMiddleware, lessonController.getLessonsByCourse);
-router.get('/:id', authMiddleware, lessonController.getLessonDetails);
+// Public/User routes (optionalAuth allows viewing without login)
+router.get('/course/:courseId', optionalAuth, lessonController.getLessonsByCourse);
+router.get('/:id', optionalAuth, lessonController.getLessonDetails);
 
 const adminMiddleware = require('../middleware/admin.middleware');
 
