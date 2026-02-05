@@ -87,8 +87,8 @@ const Notebook = {
     addItem: async (notebookId, vocabId, note = null) => {
         try {
             const [result] = await db.execute(
-                `INSERT INTO notebook_items (notebook_id, vocab_id, note) VALUES (?, ?, ?)`,
-                [notebookId, vocabId, note]
+                `INSERT INTO notebook_items (notebook_id, vocabulary_id, vocab_id, note) VALUES (?, ?, ?, ?)`,
+                [notebookId, vocabId, vocabId, note]
             );
             return { success: true, id: result.insertId };
         } catch (error) {
