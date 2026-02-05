@@ -72,12 +72,14 @@ const Notebook = {
     // Get items in a notebook
     getItems: async (notebookId, userId) => {
         const sql = `
-            SELECT ni.*, v.simplified, v.pinyin, v.meaning_vi, v.hsk_level, v.word_type
+            SELECT ni.notebook_id, ni.vocabulary_id, ni.vocab_id, ni.note, 
+                   ni.mastery_level, ni.review_count, ni.last_reviewed_at, ni.added_at,
+                   v.simplified, v.pinyin, v.meaning_vi, v.hsk_level, v.word_type
             FROM notebook_items ni
-            JOIN vocabulary v ON ni.vocab_id = v.id
+            JOIN vocabulary v ON ni.vocabulary_id = v.id
             JOIN notebooks n ON ni.notebook_id = n.id
             WHERE ni.notebook_id = ? AND n.user_id = ?
-            ORDER BY ni.created_at DESC
+            ORDER BY ni.added_at DESC
         `;
         const [rows] = await db.execute(sql, [notebookId, userId]);
         return rows;
