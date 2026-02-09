@@ -46,7 +46,7 @@ async function findById(id) {
  */
 async function findByIdForRefresh(id) {
     const [rows] = await db.execute(
-        'SELECT id, email, display_name, role, is_active FROM users WHERE id = ?',
+        'SELECT id, email, display_name, role, is_active, refresh_token_hash FROM users WHERE id = ?',
         [id]
     );
     return rows[0] || null;
@@ -65,12 +65,12 @@ async function create({ email, passwordHash, displayName, googleId = null }) {
 }
 
 /**
- * Update refresh token for user
+ * Update refresh token hash for user
  */
-async function updateRefreshToken(userId, refreshToken) {
+async function updateRefreshToken(userId, refreshTokenHash) {
     await db.execute(
-        'UPDATE users SET refresh_token = ? WHERE id = ?',
-        [refreshToken, userId]
+        'UPDATE users SET refresh_token_hash = ? WHERE id = ?',
+        [refreshTokenHash, userId]
     );
 }
 

@@ -16,38 +16,42 @@ const db = require('../config/database');
  */
 async function updateStreak(userId) {
     try {
+        // Use DB's CURDATE() for consistent timezone handling
         const [rows] = await db.execute(
-            'SELECT last_study_date, current_streak, longest_streak, total_study_days FROM users WHERE id = ?',
+            `SELECT last_study_date, current_streak, longest_streak, total_study_days,
+                    CURDATE() as today_date,
+                    DATE_SUB(CURDATE(), INTERVAL 1 DAY) as yesterday_date
+             FROM users WHERE id = ?`,
             [userId]
         );
 
         if (!rows[0]) return { updated: false, reason: 'User not found' };
 
         const user = rows[0];
-        const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
+        const todayStr = user.today_date;
+        const yesterdayStr = user.yesterday_date;
 
-        // Parse last study date
+        // Parse last study date for comparison
         let lastStudyStr = null;
         if (user.last_study_date) {
-            const lastStudy = new Date(user.last_study_date);
-            lastStudyStr = lastStudy.toISOString().split('T')[0];
+            // last_study_date is a DATE column, format as YYYY-MM-DD
+            const d = new Date(user.last_study_date);
+            lastStudyStr = d.toISOString().split('T')[0];
         }
 
+        // Format today/yesterday from DB for comparison
+        const todayFormatted = new Date(todayStr).toISOString().split('T')[0];
+        const yesterdayFormatted = new Date(yesterdayStr).toISOString().split('T')[0];
+
         // If already studied today, no update needed
-        if (lastStudyStr === todayStr) {
+        if (lastStudyStr === todayFormatted) {
             return { updated: false, reason: 'Already studied today' };
         }
 
         let newStreak = user.current_streak || 0;
         let newTotalDays = user.total_study_days || 0;
 
-        // Calculate yesterday's date
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-        if (lastStudyStr === yesterdayStr) {
+        if (lastStudyStr === yesterdayFormatted) {
             // Consecutive day - increase streak
             newStreak += 1;
         } else {
@@ -63,11 +67,11 @@ async function updateStreak(userId) {
 
         // Update database
         await db.execute(
-            `UPDATE users SET 
-                current_streak = ?, 
-                longest_streak = ?, 
-                total_study_days = ?, 
-                last_study_date = CURDATE() 
+            `UPDATE users SET
+                current_streak = ?,
+                longest_streak = ?,
+                total_study_days = ?,
+                last_study_date = CURDATE()
              WHERE id = ?`,
             [newStreak, newLongest, newTotalDays, userId]
         );
