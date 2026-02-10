@@ -1,16 +1,20 @@
 const db = require('../config/database');
 
 const Lesson = {
-    // List lessons by course ID
-    findByCourseId: async (courseId) => {
+    // List lessons by course ID (with optional user progress)
+    findByCourseId: async (courseId, userId = null) => {
         const [rows] = await db.execute(
-            `SELECT l.*, 
+            `SELECT l.*,
                     (SELECT COUNT(*) FROM contents WHERE lesson_id = l.id) as content_count,
-                    (SELECT COUNT(*) FROM questions WHERE lesson_id = l.id) as question_count
-             FROM lessons l 
-             WHERE l.course_id = ? AND l.is_active = TRUE 
+                    (SELECT COUNT(*) FROM questions WHERE lesson_id = l.id) as question_count,
+                    (SELECT ulp.status FROM user_lesson_progress ulp
+                     WHERE ulp.lesson_id = l.id AND ulp.user_id = ?
+                     ORDER BY FIELD(ulp.status, 'completed', 'in_progress', 'not_started')
+                     LIMIT 1) as progress_status
+             FROM lessons l
+             WHERE l.course_id = ? AND l.is_active = TRUE
              ORDER BY l.order_index ASC`,
-            [courseId]
+            [userId, courseId]
         );
         return rows;
     },

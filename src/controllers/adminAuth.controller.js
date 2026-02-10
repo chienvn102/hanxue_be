@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const Admin = require('../models/admin.model');
+const db = require('../config/database');
 
 exports.login = async (req, res) => {
     try {
@@ -52,5 +53,33 @@ exports.getMe = async (req, res) => {
         res.json({ success: true, admin });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
+    }
+};
+
+exports.getStats = async (req, res) => {
+    try {
+        const [[users], [courses], [lessons], [vocab], [grammar], [exams]] = await Promise.all([
+            db.execute('SELECT COUNT(*) as count FROM users'),
+            db.execute('SELECT COUNT(*) as count FROM courses'),
+            db.execute('SELECT COUNT(*) as count FROM lessons'),
+            db.execute('SELECT COUNT(*) as count FROM vocabulary'),
+            db.execute('SELECT COUNT(*) as count FROM grammar_patterns'),
+            db.execute('SELECT COUNT(*) as count FROM hsk_exams'),
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                userCount: users[0].count,
+                courseCount: courses[0].count,
+                lessonCount: lessons[0].count,
+                vocabCount: vocab[0].count,
+                grammarCount: grammar[0].count,
+                examCount: exams[0].count,
+            }
+        });
+    } catch (error) {
+        console.error('Get admin stats error:', error);
+        res.status(500).json({ message: 'Failed to get stats' });
     }
 };

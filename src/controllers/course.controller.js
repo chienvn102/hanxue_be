@@ -3,7 +3,7 @@ const Course = require('../models/course.model');
 // Get all courses (public/private)
 exports.getCourses = async (req, res) => {
     try {
-        const userId = req.user ? req.user.id : null;
+        const userId = req.user ? req.user.userId : null;
         const courses = await Course.findAll(userId);
 
         // Add locked status logic here if needed based on prerequisite

@@ -8,5 +8,6 @@ router.post('/login', adminAuthController.login);
 
 // Protected admin routes
 router.get('/me', adminMiddleware, adminAuthController.getMe);
+router.get('/stats', adminMiddleware, adminAuthController.getStats);
 
 module.exports = router;

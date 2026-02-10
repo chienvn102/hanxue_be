@@ -8,6 +8,9 @@ const roleMiddleware = require('../middleware/role.middleware');
 router.get('/course/:courseId', optionalAuth, lessonController.getLessonsByCourse);
 router.get('/:id', optionalAuth, lessonController.getLessonDetails);
 
+// Authenticated user routes
+router.post('/:id/progress', authMiddleware, lessonController.updateLessonProgress);
+
 const adminMiddleware = require('../middleware/admin.middleware');
 
 // Admin routes - Lessons

@@ -6,9 +6,9 @@ const Course = {
         const sql = `
             SELECT c.*, 
                    COUNT(l.id) as lesson_count,
-                   (SELECT COUNT(*) FROM user_lesson_progress ulp 
-                    JOIN lessons l2 ON ulp.lesson_id = l2.id 
-                    WHERE l2.course_id = c.id AND ulp.user_id = ?) as completed_lessons
+                   (SELECT COUNT(*) FROM user_lesson_progress ulp
+                    JOIN lessons l2 ON ulp.lesson_id = l2.id
+                    WHERE l2.course_id = c.id AND ulp.user_id = ? AND ulp.status = 'completed') as completed_lessons
             FROM courses c
             LEFT JOIN lessons l ON c.id = l.course_id AND l.is_active = TRUE
             WHERE c.is_active = TRUE

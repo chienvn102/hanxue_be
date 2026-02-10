@@ -1,11 +1,13 @@
 const Lesson = require('../models/lesson.model');
 const Content = require('../models/content.model');
 const Question = require('../models/question.model');
+const db = require('../config/database');
 
 // Get all lessons for a course
 exports.getLessonsByCourse = async (req, res) => {
     try {
-        const lessons = await Lesson.findByCourseId(req.params.courseId);
+        const userId = req.user ? req.user.userId : null;
+        const lessons = await Lesson.findByCourseId(req.params.courseId, userId);
         res.json({ success: true, data: lessons });
     } catch (error) {
         console.error('Error fetching lessons:', error);
@@ -77,9 +79,18 @@ exports.deleteLesson = async (req, res) => {
 // Admin: Add Content to Lesson
 exports.addContent = async (req, res) => {
     try {
-        const id = await Content.create({ ...req.body, lesson_id: req.params.id });
-        res.status(201).json({ success: true, data: { id, ...req.body } });
+        const { content_type, start_time, end_time, text_content, pinyin, meaning, explanation } = req.body;
+        const contentData = {
+            lesson_id: req.params.id,
+            type: (content_type || 'vocabulary').toUpperCase(),
+            timestamp: start_time || 0,
+            data: { text_content, pinyin, meaning, explanation, start_time, end_time },
+            order_index: req.body.order_index || 0,
+        };
+        const id = await Content.create(contentData);
+        res.status(201).json({ success: true, data: { id, ...contentData } });
     } catch (error) {
+        console.error('Add content error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 };
@@ -96,3 +107,45 @@ exports.addQuestion = async (req, res) => {
 
 // Admin: Update/Delete Content/Question endpoints could be separate or here
 // For simplicity, we can have separate generic routes for contents/questions updates
+
+// User: Update lesson progress
+exports.updateLessonProgress = async (req, res) => {
+    try {
+        const lessonId = req.params.id;
+        const userId = req.user.userId;
+        const { status } = req.body;
+
+        if (!['in_progress', 'completed'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status' });
+        }
+
+        // Verify lesson exists and is active
+        const lesson = await Lesson.findById(lessonId);
+        if (!lesson || !lesson.is_active) {
+            return res.status(404).json({ success: false, message: 'Lesson not found' });
+        }
+
+        // Do not downgrade from completed to in_progress
+        if (status === 'in_progress') {
+            await db.execute(
+                `INSERT INTO user_lesson_progress (user_id, lesson_id, status)
+                 VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                   status = IF(status = 'completed', status, VALUES(status))`,
+                [userId, lessonId, status]
+            );
+        } else {
+            await db.execute(
+                `INSERT INTO user_lesson_progress (user_id, lesson_id, status, completed_at)
+                 VALUES (?, ?, ?, NOW())
+                 ON DUPLICATE KEY UPDATE status = VALUES(status), completed_at = NOW()`,
+                [userId, lessonId, status]
+            );
+        }
+
+        res.json({ success: true, data: { lesson_id: lessonId, status } });
+    } catch (error) {
+        console.error('Update lesson progress error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
