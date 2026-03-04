@@ -308,6 +308,17 @@ async function completeAttempt(attemptId) {
     try {
         await conn.beginTransaction();
 
+        // Atomic claim: lock row and verify status in same transaction
+        const [lockRows] = await conn.execute(
+            `SELECT id, exam_id, status FROM hsk_exam_attempts WHERE id = ? FOR UPDATE`,
+            [attemptId]
+        );
+        if (!lockRows[0] || lockRows[0].status !== 'in_progress') {
+            const err = new Error('Exam already completed');
+            err.code = 'ALREADY_COMPLETED';
+            throw err;  // catch block handles rollback
+        }
+
         // Fetch answers WITH correct_answer and points for grading
         const [answers] = await conn.execute(
             `SELECT ua.*, q.correct_answer, q.points AS question_points, q.section_id, s.section_type
@@ -350,8 +361,8 @@ async function completeAttempt(attemptId) {
         const totalScore = listeningScore + readingScore + writingScore;
 
         // Get exam passing score and max possible score
-        const [attempt] = await conn.execute('SELECT exam_id FROM hsk_exam_attempts WHERE id = ?', [attemptId]);
-        const [exam] = await conn.execute('SELECT passing_score, total_questions FROM hsk_exams WHERE id = ?', [attempt[0].exam_id]);
+        const examId = lockRows[0].exam_id;
+        const [exam] = await conn.execute('SELECT passing_score, total_questions FROM hsk_exams WHERE id = ?', [examId]);
         const isPassed = totalScore >= (exam[0]?.passing_score || 0);
         const unansweredCount = (exam[0]?.total_questions || 0) - correctCount - wrongCount;
 
@@ -361,7 +372,7 @@ async function completeAttempt(attemptId) {
              FROM hsk_questions q
              JOIN hsk_sections s ON q.section_id = s.id
              WHERE s.exam_id = ?`,
-            [attempt[0].exam_id]
+            [examId]
         );
         const maxScore = maxScoreResult[0]?.max_score || 0;
 
