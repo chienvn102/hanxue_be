@@ -293,10 +293,20 @@ async function finishExam(req, res) {
         if (attempt.user_id !== userId) return res.status(403).json({ error: 'Access denied' });
         if (attempt.status === 'completed') return res.status(400).json({ error: 'Exam already completed' });
 
-        // Grade answers and complete
+        // Atomic claim: only one request can transition from in_progress to grading
+        const db = require('../config/database');
+        const [claimResult] = await db.execute(
+            `UPDATE hsk_exam_attempts SET status = 'completed' WHERE id = ? AND status = 'in_progress'`,
+            [attemptId]
+        );
+        if (claimResult.affectedRows === 0) {
+            return res.status(400).json({ error: 'Exam already completed' });
+        }
+
+        // Grade answers (attempt is now locked as 'completed', no other request can enter)
         const result = await HskExamModel.completeAttempt(attemptId);
 
-        // Award XP + streak (idempotent: guard above ensures status !== 'completed')
+        // Award XP + streak (safe: atomic claim above prevents double-award)
         try {
             await streakService.updateStreak(userId);
             const xp = result.isPassed ? 25 : 15;
