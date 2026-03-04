@@ -4,6 +4,7 @@
  */
 
 const HskExamModel = require('../models/hskExam.model');
+const streakService = require('../services/streak.service');
 
 // ============================================================
 // ADMIN - EXAM MANAGEMENT
@@ -294,6 +295,15 @@ async function finishExam(req, res) {
 
         // Grade answers and complete
         const result = await HskExamModel.completeAttempt(attemptId);
+
+        // Award XP + streak (idempotent: guard above ensures status !== 'completed')
+        try {
+            await streakService.updateStreak(userId);
+            const xp = result.isPassed ? 25 : 15;
+            await streakService.addXP(userId, xp);
+        } catch (e) {
+            console.error('Streak/XP update failed (non-blocking):', e);
+        }
 
         res.json({ success: true, result });
     } catch (err) {

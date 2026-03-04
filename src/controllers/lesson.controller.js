@@ -2,6 +2,7 @@ const Lesson = require('../models/lesson.model');
 const Content = require('../models/content.model');
 const Question = require('../models/question.model');
 const db = require('../config/database');
+const streakService = require('../services/streak.service');
 
 // Get all lessons for a course
 exports.getLessonsByCourse = async (req, res) => {
@@ -135,12 +136,29 @@ exports.updateLessonProgress = async (req, res) => {
                 [userId, lessonId, status]
             );
         } else {
+            // Check previous status BEFORE update — idempotent XP guard
+            const [existing] = await db.execute(
+                'SELECT status FROM user_lesson_progress WHERE user_id = ? AND lesson_id = ? LIMIT 1',
+                [userId, lessonId]
+            );
+            const wasAlreadyCompleted = existing.length > 0 && existing[0].status === 'completed';
+
             await db.execute(
                 `INSERT INTO user_lesson_progress (user_id, lesson_id, status, completed_at)
                  VALUES (?, ?, ?, NOW())
                  ON DUPLICATE KEY UPDATE status = VALUES(status), completed_at = NOW()`,
                 [userId, lessonId, status]
             );
+
+            // Award XP + streak only on first completion (not re-completion)
+            if (!wasAlreadyCompleted) {
+                try {
+                    await streakService.updateStreak(userId);
+                    await streakService.addXP(userId, 20);
+                } catch (e) {
+                    console.error('Streak/XP update failed (non-blocking):', e);
+                }
+            }
         }
 
         res.json({ success: true, data: { lesson_id: lessonId, status } });
