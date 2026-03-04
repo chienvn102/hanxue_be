@@ -304,51 +304,85 @@ async function submitAnswer(attemptId, questionId, userAnswer, isCorrect, points
 }
 
 async function completeAttempt(attemptId) {
-    // Calculate scores
-    const [answers] = await db.execute(
-        `SELECT ua.*, q.section_id, s.section_type
-         FROM hsk_user_answers ua
-         JOIN hsk_questions q ON ua.question_id = q.id
-         JOIN hsk_sections s ON q.section_id = s.id
-         WHERE ua.attempt_id = ?`,
-        [attemptId]
-    );
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
 
-    let listeningScore = 0, readingScore = 0, writingScore = 0;
-    let correctCount = 0, wrongCount = 0;
-    let totalTimeSpent = 0;
+        // Fetch answers WITH correct_answer and points for grading
+        const [answers] = await conn.execute(
+            `SELECT ua.*, q.correct_answer, q.points AS question_points, q.section_id, s.section_type
+             FROM hsk_user_answers ua
+             JOIN hsk_questions q ON ua.question_id = q.id
+             JOIN hsk_sections s ON q.section_id = s.id
+             WHERE ua.attempt_id = ?`,
+            [attemptId]
+        );
 
-    for (const ans of answers) {
-        totalTimeSpent += ans.time_spent_seconds || 0;
-        if (ans.is_correct) {
-            correctCount++;
-            const points = ans.points_earned || 1;
-            if (ans.section_type === 'listening') listeningScore += points;
-            else if (ans.section_type === 'reading') readingScore += points;
-            else if (ans.section_type === 'writing') writingScore += points;
-        } else if (ans.is_correct === false) {
-            wrongCount++;
+        let listeningScore = 0, readingScore = 0, writingScore = 0;
+        let correctCount = 0, wrongCount = 0;
+        let totalTimeSpent = 0;
+
+        // Grade each answer by comparing user_answer with correct_answer
+        for (const ans of answers) {
+            totalTimeSpent += ans.time_spent_seconds || 0;
+
+            const userAnswer = (ans.user_answer || '').trim().toLowerCase();
+            const correctAnswer = (ans.correct_answer || '').trim().toLowerCase();
+            const isCorrect = userAnswer !== '' && userAnswer === correctAnswer;
+            const points = isCorrect ? (ans.question_points || 1) : 0;
+
+            // Update the answer row with grading result
+            await conn.execute(
+                `UPDATE hsk_user_answers SET is_correct = ?, points_earned = ? WHERE id = ?`,
+                [isCorrect, points, ans.id]
+            );
+
+            if (isCorrect) {
+                correctCount++;
+                if (ans.section_type === 'listening') listeningScore += points;
+                else if (ans.section_type === 'reading') readingScore += points;
+                else if (ans.section_type === 'writing') writingScore += points;
+            } else {
+                wrongCount++;
+            }
         }
+
+        const totalScore = listeningScore + readingScore + writingScore;
+
+        // Get exam passing score and max possible score
+        const [attempt] = await conn.execute('SELECT exam_id FROM hsk_exam_attempts WHERE id = ?', [attemptId]);
+        const [exam] = await conn.execute('SELECT passing_score, total_questions FROM hsk_exams WHERE id = ?', [attempt[0].exam_id]);
+        const isPassed = totalScore >= (exam[0]?.passing_score || 0);
+        const unansweredCount = (exam[0]?.total_questions || 0) - correctCount - wrongCount;
+
+        // Calculate max possible score
+        const [maxScoreResult] = await conn.execute(
+            `SELECT COALESCE(SUM(q.points), 0) as max_score
+             FROM hsk_questions q
+             JOIN hsk_sections s ON q.section_id = s.id
+             WHERE s.exam_id = ?`,
+            [attempt[0].exam_id]
+        );
+        const maxScore = maxScoreResult[0]?.max_score || 0;
+
+        await conn.execute(
+            `UPDATE hsk_exam_attempts SET
+             completed_at = NOW(), status = 'completed',
+             listening_score = ?, reading_score = ?, writing_score = ?, total_score = ?,
+             max_score = ?, is_passed = ?, correct_count = ?, wrong_count = ?, unanswered_count = ?, time_spent_seconds = ?
+             WHERE id = ?`,
+            [listeningScore, readingScore, writingScore, totalScore, maxScore, isPassed, correctCount, wrongCount, unansweredCount, totalTimeSpent, attemptId]
+        );
+
+        await conn.commit();
+
+        return { listeningScore, readingScore, writingScore, totalScore, maxScore, isPassed, correctCount, wrongCount, unansweredCount };
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
     }
-
-    const totalScore = listeningScore + readingScore + writingScore;
-
-    // Get exam passing score
-    const [attempt] = await db.execute('SELECT exam_id FROM hsk_exam_attempts WHERE id = ?', [attemptId]);
-    const [exam] = await db.execute('SELECT passing_score, total_questions FROM hsk_exams WHERE id = ?', [attempt[0].exam_id]);
-    const isPassed = totalScore >= (exam[0]?.passing_score || 0);
-    const unansweredCount = (exam[0]?.total_questions || 0) - correctCount - wrongCount;
-
-    await db.execute(
-        `UPDATE hsk_exam_attempts SET 
-         completed_at = NOW(), status = 'completed',
-         listening_score = ?, reading_score = ?, writing_score = ?, total_score = ?,
-         is_passed = ?, correct_count = ?, wrong_count = ?, unanswered_count = ?, time_spent_seconds = ?
-         WHERE id = ?`,
-        [listeningScore, readingScore, writingScore, totalScore, isPassed, correctCount, wrongCount, unansweredCount, totalTimeSpent, attemptId]
-    );
-
-    return { listeningScore, readingScore, writingScore, totalScore, isPassed, correctCount, wrongCount };
 }
 
 async function getUserAttempts(userId, examId = null) {
@@ -366,6 +400,34 @@ async function getUserAttempts(userId, examId = null) {
     sql += ' ORDER BY a.started_at DESC';
 
     const [rows] = await db.execute(sql, params);
+    return rows;
+}
+
+async function getInProgressAttempt(userId, examId) {
+    const [rows] = await db.execute(
+        `SELECT * FROM hsk_exam_attempts WHERE user_id = ? AND exam_id = ? AND status = 'in_progress' ORDER BY started_at DESC LIMIT 1`,
+        [userId, examId]
+    );
+    return rows[0] || null;
+}
+
+async function getAttemptAnswers(attemptId) {
+    const [rows] = await db.execute(
+        `SELECT ua.question_id, ua.user_answer, ua.time_spent_seconds
+         FROM hsk_user_answers ua
+         WHERE ua.attempt_id = ?`,
+        [attemptId]
+    );
+    return rows;
+}
+
+async function getAttemptWithAnswers(attemptId) {
+    const [rows] = await db.execute(
+        `SELECT ua.question_id, ua.user_answer, ua.is_correct, ua.points_earned, ua.time_spent_seconds
+         FROM hsk_user_answers ua
+         WHERE ua.attempt_id = ?`,
+        [attemptId]
+    );
     return rows;
 }
 
@@ -389,6 +451,9 @@ module.exports = {
     // Attempts
     createAttempt,
     getAttemptById,
+    getInProgressAttempt,
+    getAttemptAnswers,
+    getAttemptWithAnswers,
     submitAnswer,
     completeAttempt,
     getUserAttempts

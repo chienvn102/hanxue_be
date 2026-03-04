@@ -190,19 +190,33 @@ async function getPublicExamList(req, res) {
 
 async function startExam(req, res) {
     try {
-        const userId = req.user?.id || req.body.userId;
+        const userId = req.user?.userId;
         if (!userId) return res.status(401).json({ error: 'User not authenticated' });
 
         const exam = await HskExamModel.getExamById(req.params.id, true);
         if (!exam) return res.status(404).json({ error: 'Exam not found' });
 
-        // Create attempt
-        const attemptId = await HskExamModel.createAttempt(userId, exam.id);
+        // Check for existing in_progress attempt (resume support)
+        let attemptId;
+        let savedAnswers = [];
+        const existingAttempt = await HskExamModel.getInProgressAttempt(userId, exam.id);
+
+        if (existingAttempt) {
+            attemptId = existingAttempt.id;
+            savedAnswers = await HskExamModel.getAttemptAnswers(attemptId);
+        } else {
+            attemptId = await HskExamModel.createAttempt(userId, exam.id);
+        }
 
         // Return exam with questions (without correct answers)
         const safeExam = {
             ...exam,
             attemptId,
+            startedAt: existingAttempt?.started_at || new Date().toISOString(),
+            savedAnswers: savedAnswers.map(a => ({
+                questionId: a.question_id,
+                answer: a.user_answer
+            })),
             sections: exam.sections.map(section => ({
                 ...section,
                 questions: section.questions.map(q => ({
@@ -232,15 +246,30 @@ async function startExam(req, res) {
 
 async function submitAnswer(req, res) {
     try {
+        const userId = req.user?.userId;
+        if (!userId) return res.status(401).json({ error: 'User not authenticated' });
+
         const { questionId, answer, timeSpent } = req.body;
         const attemptId = req.params.attemptId;
 
-        // Verify attempt belongs to user
+        // Verify attempt exists, belongs to user, and is in progress
         const attempt = await HskExamModel.getAttemptById(attemptId);
         if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
+        if (attempt.user_id !== userId) return res.status(403).json({ error: 'Access denied' });
         if (attempt.status !== 'in_progress') return res.status(400).json({ error: 'Exam already completed' });
 
-        // Check if answer is correct (we'll check correctness on submit)
+        // Validate questionId belongs to this exam
+        const exam = await HskExamModel.getExamById(attempt.exam_id, true);
+        const validQuestionIds = new Set();
+        for (const section of exam.sections) {
+            for (const q of section.questions) {
+                validQuestionIds.add(q.id);
+            }
+        }
+        if (!validQuestionIds.has(questionId)) {
+            return res.status(400).json({ error: 'Question does not belong to this exam' });
+        }
+
         await HskExamModel.submitAnswer(attemptId, questionId, answer, null, 0, timeSpent || 0);
 
         res.json({ success: true });
@@ -252,11 +281,15 @@ async function submitAnswer(req, res) {
 
 async function finishExam(req, res) {
     try {
+        const userId = req.user?.userId;
+        if (!userId) return res.status(401).json({ error: 'User not authenticated' });
+
         const attemptId = req.params.attemptId;
 
-        // Verify attempt
+        // Verify attempt exists and belongs to user
         const attempt = await HskExamModel.getAttemptById(attemptId);
         if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
+        if (attempt.user_id !== userId) return res.status(403).json({ error: 'Access denied' });
         if (attempt.status === 'completed') return res.status(400).json({ error: 'Exam already completed' });
 
         // Grade answers and complete
@@ -271,12 +304,37 @@ async function finishExam(req, res) {
 
 async function getExamResult(req, res) {
     try {
+        const userId = req.user?.userId;
+        if (!userId) return res.status(401).json({ error: 'User not authenticated' });
+
         const attemptId = req.params.attemptId;
         const attempt = await HskExamModel.getAttemptById(attemptId);
         if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
 
+        // Verify attempt belongs to user
+        if (attempt.user_id !== userId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // Only allow viewing result after completion
+        if (attempt.status !== 'completed') {
+            return res.status(400).json({ error: 'Exam not yet completed' });
+        }
+
         // Get full exam with answers
         const exam = await HskExamModel.getExamById(attempt.exam_id, true);
+
+        // Get user answers for this attempt
+        const userAnswers = await HskExamModel.getAttemptWithAnswers(attemptId);
+        const answerMap = {};
+        for (const ua of userAnswers) {
+            answerMap[ua.question_id] = {
+                userAnswer: ua.user_answer,
+                isCorrect: ua.is_correct,
+                pointsEarned: ua.points_earned,
+                timeSpent: ua.time_spent_seconds
+            };
+        }
 
         res.json({
             attempt,
@@ -284,7 +342,26 @@ async function getExamResult(req, res) {
                 title: exam.title,
                 hskLevel: exam.hsk_level,
                 passingScore: exam.passing_score,
-                sections: exam.sections
+                totalQuestions: exam.total_questions,
+                durationMinutes: exam.duration_minutes,
+                sections: exam.sections.map(section => ({
+                    ...section,
+                    questions: section.questions.map(q => ({
+                        id: q.id,
+                        questionNumber: q.question_number,
+                        questionType: q.question_type,
+                        questionText: q.question_text,
+                        questionImage: q.question_image,
+                        options: q.options,
+                        optionImages: q.option_images,
+                        correctAnswer: q.correct_answer,
+                        explanation: q.explanation,
+                        points: q.points,
+                        userAnswer: answerMap[q.id]?.userAnswer || null,
+                        isCorrect: answerMap[q.id]?.isCorrect ?? null,
+                        pointsEarned: answerMap[q.id]?.pointsEarned || 0
+                    }))
+                }))
             }
         });
     } catch (err) {
@@ -295,7 +372,7 @@ async function getExamResult(req, res) {
 
 async function getUserHistory(req, res) {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.userId;
         if (!userId) return res.status(401).json({ error: 'User not authenticated' });
 
         const attempts = await HskExamModel.getUserAttempts(userId);
