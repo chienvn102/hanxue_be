@@ -67,6 +67,7 @@ app.use('/api/upload', require('./routes/upload'));
 app.use('/api/grammar', require('./routes/grammar'));
 app.use('/api/notebooks', require('./routes/notebooks'));
 app.use('/api/hsk-exams', require('./routes/hskExam'));
+app.use('/api/chat', require('./routes/chat'));
 
 // 404 handler
 app.use((req, res) => {
