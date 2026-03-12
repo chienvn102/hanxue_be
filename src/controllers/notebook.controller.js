@@ -92,12 +92,16 @@ const notebookController = {
         try {
             const { id } = req.params; // notebook id
             const { vocab_id, note } = req.body;
+            const userId = req.user.userId;
 
             if (!vocab_id) {
                 return res.status(400).json({ success: false, message: 'vocab_id là bắt buộc' });
             }
 
-            const result = await Notebook.addItem(id, vocab_id, note);
+            const result = await Notebook.addItem(id, vocab_id, userId, note);
+            if (result.forbidden) {
+                return res.status(403).json({ success: false, message: 'Không có quyền truy cập sổ tay này' });
+            }
             if (!result.success) {
                 return res.status(400).json({ success: false, message: result.message });
             }
@@ -130,12 +134,16 @@ const notebookController = {
     saveVocab: async (req, res) => {
         try {
             const { id } = req.params; // vocab id
+            const userId = req.user.userId;
 
             // Get or create default notebook
-            const notebook = await Notebook.getOrCreateDefault(req.user.userId);
+            const notebook = await Notebook.getOrCreateDefault(userId);
 
             // Add vocab to default notebook
-            const result = await Notebook.addItem(notebook.id, id);
+            const result = await Notebook.addItem(notebook.id, id, userId);
+            if (result.forbidden) {
+                return res.status(403).json({ success: false, message: 'Không có quyền truy cập sổ tay này' });
+            }
             if (!result.success) {
                 return res.status(400).json({ success: false, message: result.message });
             }

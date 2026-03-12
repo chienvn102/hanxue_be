@@ -85,8 +85,16 @@ const Notebook = {
         return rows;
     },
 
-    // Add vocab to notebook
-    addItem: async (notebookId, vocabId, note = null) => {
+    // Add vocab to notebook (with ownership check)
+    addItem: async (notebookId, vocabId, userId, note = null) => {
+        // Verify notebook belongs to user before inserting
+        const [notebook] = await db.execute(
+            'SELECT id FROM notebooks WHERE id = ? AND user_id = ?',
+            [notebookId, userId]
+        );
+        if (notebook.length === 0) {
+            return { success: false, message: 'Không tìm thấy sổ tay', forbidden: true };
+        }
         try {
             const [result] = await db.execute(
                 `INSERT INTO notebook_items (notebook_id, vocabulary_id, vocab_id, note) VALUES (?, ?, ?, ?)`,

@@ -129,9 +129,9 @@ async function refresh(req, res) {
             return res.status(401).json({ error: 'Invalid refresh token' });
         }
 
-        // Generate new access token
+        // Generate new access token (must include role to match login token shape)
         const accessToken = jwt.sign(
-            { userId: user.id, email: user.email },
+            { userId: user.id, email: user.email, role: user.role || 'user' },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
         );
