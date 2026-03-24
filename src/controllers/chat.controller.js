@@ -5,9 +5,15 @@
  * (follows lesson/course/notebook convention)
  */
 
+const crypto = require('crypto');
 const groqService = require('../services/groq');
 const ChatModel = require('../models/chat.model');
 const streakService = require('../services/streak.service');
+
+/** Generate short request ID for log correlation */
+function genRequestId() {
+    return 'chat-' + crypto.randomBytes(4).toString('hex');
+}
 
 // System prompts
 const SYSTEM_PROMPT_CHAT = (level) =>
@@ -75,9 +81,12 @@ function sanitizeHistory(history) {
  * Send a message to AI and get a response
  */
 async function sendMessage(req, res) {
+    const requestId = genRequestId();
     try {
         const userId = req.user.userId;
         const { message, mode, history } = req.body;
+
+        console.log(`[${requestId}] Chat request: userId=${userId}, mode=${mode || 'chat'}, historyLen=${Array.isArray(history) ? history.length : 0}, msgLen=${(message || '').length}`);
 
         // Validate message
         if (!message || typeof message !== 'string' || !message.trim()) {
@@ -117,7 +126,9 @@ async function sendMessage(req, res) {
         ];
 
         // Call Groq API
-        const { text: reply } = await groqService.sendMessage(groqMessages);
+        const startMs = Date.now();
+        const { text: reply } = await groqService.sendMessage(groqMessages, requestId);
+        console.log(`[${requestId}] Groq responded in ${Date.now() - startMs}ms, replyLen=${reply.length}`);
 
         // Increment daily chat count (returns actual post-increment count)
         const newChatCount = await ChatModel.incrementDailyAiChat(userId);
@@ -149,10 +160,18 @@ async function sendMessage(req, res) {
         });
 
     } catch (error) {
-        console.error('Chat send error:', error);
-        return res.status(500).json({
+        // P3: log full error with stack for debugging
+        console.error(`[${requestId}] Chat send error:`, {
+            message: error.message,
+            status: error.status,
+            stack: error.stack,
+        });
+        // P2: map upstream status (429/502/503/504) instead of always 500
+        const httpStatus = [429, 502, 503, 504].includes(error.status) ? error.status : 500;
+        // P1: only return public-safe message, never raw upstream details
+        return res.status(httpStatus).json({
             success: false,
-            message: 'Loi he thong. Vui long thu lai sau.'
+            message: error.publicMessage || 'Lỗi hệ thống. Vui lòng thử lại sau.'
         });
     }
 }
