@@ -242,9 +242,11 @@ const FINAL_VOWEL_RULES = {
 };
 
 /**
- * Generate detailed feedback based on pronunciation result
+ * Generate detailed feedback (Chinese + Vietnamese) based on pronunciation result.
+ * Chinese (zh) is meant to be played by TTS; Vietnamese (vi) is meant to be
+ * shown to the learner who is a Vietnamese speaker.
  * @param {Object} pronResult - Result from Azure Speech
- * @returns {string} - Vietnamese feedback text
+ * @returns {{ zh: string, vi: string }}
  */
 function generateFeedback(pronResult) {
     const score = pronResult.pronunciationScore;
@@ -254,45 +256,58 @@ function generateFeedback(pronResult) {
     const weakPhonemes = pronResult.weakPhonemes || [];
     const words = pronResult.words || [];
 
-    let feedback = '';
+    let zh = '';
+    let vi = '';
 
     // Overall feedback
     if (score >= 90) {
-        feedback = '太棒了！你的发音非常标准。';
+        zh = '太棒了！你的发音非常标准。';
+        vi = 'Tuyệt vời! Phát âm của bạn rất chuẩn.';
     } else if (score >= 80) {
-        feedback = '很好！你的发音很不错。';
+        zh = '很好！你的发音很不错。';
+        vi = 'Rất tốt! Phát âm của bạn khá ổn.';
     } else if (score >= 70) {
-        feedback = '不错！继续努力。';
+        zh = '不错！继续努力。';
+        vi = 'Khá ổn! Tiếp tục cố gắng nhé.';
     } else if (score >= 60) {
-        feedback = '还可以，但需要多练习。';
+        zh = '还可以，但需要多练习。';
+        vi = 'Cũng được, nhưng cần luyện tập thêm.';
     } else {
-        feedback = '需要多加练习。';
+        zh = '需要多加练习。';
+        vi = 'Cần luyện tập nhiều hơn.';
     }
 
-    // ✅ NEW: Pace guidance based on fluency
+    // Pace guidance based on fluency
     if (fluency < 60) {
-        feedback += ' 你读得太快了，试着读慢一点，每个字都要读清楚。';
+        zh += ' 你读得太快了，试着读慢一点，每个字都要读清楚。';
+        vi += ' Bạn đọc hơi nhanh, hãy thử đọc chậm lại, đọc rõ từng chữ.';
     } else if (fluency < 70) {
-        feedback += ' 试着读得更连贯一些，不要停顿太多。';
+        zh += ' 试着读得更连贯一些，不要停顿太多。';
+        vi += ' Hãy đọc liền mạch hơn, đừng ngắt nghỉ quá nhiều.';
     } else if (fluency > 90) {
-        feedback += ' 你的语速很好，很自然。';
+        zh += ' 你的语速很好，很自然。';
+        vi += ' Tốc độ đọc của bạn rất tự nhiên.';
     }
 
-    // ✅ NEW: Missing/repeated syllable based on completeness + miscue
+    // Missing/repeated syllable based on completeness
     if (completeness < 70) {
-        feedback += ' 你漏掉了一些字，要确保读完整句话。';
+        zh += ' 你漏掉了一些字，要确保读完整句话。';
+        vi += ' Bạn bỏ sót một vài chữ, hãy đọc đủ cả câu.';
     } else if (completeness < 85) {
-        feedback += ' 注意不要漏掉任何字。';
+        zh += ' 注意不要漏掉任何字。';
+        vi += ' Lưu ý đừng bỏ sót chữ nào.';
     }
 
-    // Specific feedback
+    // Accuracy
     if (accuracy < 70) {
-        feedback += ' 准确度需要提高，注意每个字的发音。';
+        zh += ' 准确度需要提高，注意每个字的发音。';
+        vi += ' Độ chính xác cần cải thiện, để ý phát âm từng chữ.';
     }
 
-    // ✅ NEW: Phoneme-level feedback with enhanced rules
+    // Phoneme-level feedback with rule engine
     if (weakPhonemes.length > 0) {
-        feedback += ' 特别是：';
+        zh += ' 特别是：';
+        vi += ' Đặc biệt:';
 
         // Group by phoneme type
         const phonemeGroups = {};
@@ -303,58 +318,60 @@ function generateFeedback(pronResult) {
             phonemeGroups[p.phoneme].push(p.word);
         });
 
-        // Generate feedback for each weak phoneme
         Object.keys(phonemeGroups).forEach(phoneme => {
-            const words = phonemeGroups[phoneme].join('、');
+            const phonemeWords = phonemeGroups[phoneme].join('、');
 
-            // Check all rule types
             let rule = PRONUNCIATION_RULES[phoneme];
             if (!rule) rule = ASPIRATION_RULES[phoneme];
             if (!rule) rule = APICAL_VOWEL_RULES[phoneme];
             if (!rule) rule = FINAL_VOWEL_RULES[phoneme];
 
+            zh += ` ${phonemeWords} 中的${phoneme}音需要多练习。`;
             if (rule) {
-                feedback += `${words} 中的${phoneme}音需要多练习。${rule.feedback} ${rule.vietnameseTip} `;
+                vi += ` Âm ${phoneme} trong ${phonemeWords} cần luyện thêm. ${rule.feedback} ${rule.vietnameseTip}`;
             } else {
-                feedback += `${words} 中的${phoneme}音需要多练习。`;
+                vi += ` Âm ${phoneme} trong ${phonemeWords} cần luyện thêm.`;
             }
         });
     }
 
-    // ✅ NEW: Tone-level feedback
+    // Tone-level feedback
     const toneIssues = analyzeToneIssues(words);
     if (toneIssues.length > 0) {
-        feedback += ' 注意声调：';
+        zh += ' 注意声调：';
+        vi += ' Lưu ý thanh điệu:';
         toneIssues.forEach(issue => {
             const rule = TONE_RULES[issue.tone];
+            zh += ` ${issue.word} 的声调${issue.tone}需要改进。`;
             if (rule) {
-                feedback += `${issue.word} 的声调${issue.tone}需要改进。${rule.feedback} ${rule.vietnameseTip} `;
+                vi += ` Thanh ${issue.tone} của ${issue.word} cần chỉnh. ${rule.feedback} ${rule.vietnameseTip}`;
+            } else {
+                vi += ` Thanh ${issue.tone} của ${issue.word} cần chỉnh.`;
             }
         });
     }
 
-    // Word-level feedback (keep for reference)
+    // Word-level fallback (only if no phoneme/tone issues surfaced)
     if (words.length > 0) {
-        const problemWords = words.filter(w => w.accuracyScore < 70);
+        const problemWords = words.filter(w => (w.accuracyScore ?? 100) < 70);
         if (problemWords.length > 0 && weakPhonemes.length === 0 && toneIssues.length === 0) {
-            // Only show word-level if no phoneme-level or tone-level feedback
-            feedback += ' 特别是：';
+            zh += ' 特别是：';
+            vi += ' Đặc biệt:';
             problemWords.forEach(w => {
-                feedback += `${w.word} 这个字需要多练习。`;
+                zh += ` ${w.word} 这个字需要多练习。`;
+                vi += ` Chữ ${w.word} cần luyện thêm.`;
             });
         }
 
-        const goodWords = words.filter(w => w.accuracyScore >= 85);
+        const goodWords = words.filter(w => (w.accuracyScore ?? 0) >= 85);
         if (goodWords.length > 0) {
-            feedback += ' 读得好的字有：';
-            goodWords.forEach(w => {
-                feedback += `${w.word}、`;
-            });
-            feedback = feedback.slice(0, -1) + '。';
+            const goodList = goodWords.map(w => w.word).join('、');
+            zh += ` 读得好的字有：${goodList}。`;
+            vi += ` Các chữ đọc tốt: ${goodList}.`;
         }
     }
 
-    return feedback;
+    return { zh: zh.trim(), vi: vi.trim() };
 }
 
 /**

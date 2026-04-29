@@ -1,6 +1,7 @@
 const Lesson = require('../models/lesson.model');
 const Content = require('../models/content.model');
 const Question = require('../models/question.model');
+const TextbookLesson = require('../models/textbookLesson.model');
 const db = require('../config/database');
 const streakService = require('../services/streak.service');
 
@@ -164,6 +165,173 @@ exports.updateLessonProgress = async (req, res) => {
         res.json({ success: true, data: { lesson_id: lessonId, status } });
     } catch (error) {
         console.error('Update lesson progress error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// ============================================================================
+// Textbook lesson endpoints (introduced 2026-04-29)
+// ============================================================================
+
+// GET /api/lessons/:id/textbook — full payload (passage + vocab + grammar
+// + writing exercises + linked HSK exams + per-section progress)
+exports.getTextbookLesson = async (req, res) => {
+    try {
+        const lessonId = req.params.id;
+        const userId = req.user ? req.user.userId : null;
+        const payload = await TextbookLesson.getFullPayload(lessonId, userId);
+        if (!payload) {
+            return res.status(404).json({ success: false, message: 'Lesson not found' });
+        }
+        res.json({ success: true, data: payload });
+    } catch (error) {
+        console.error('Get textbook lesson error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// POST /api/lessons/:id/section-done — body: { section: 'vocab'|'passage'|'grammar'|'exercise' }
+exports.markSectionDone = async (req, res) => {
+    try {
+        const lessonId = req.params.id;
+        const userId = req.user.userId;
+        const { section } = req.body || {};
+        if (!['vocab', 'passage', 'grammar', 'exercise'].includes(section)) {
+            return res.status(400).json({ success: false, message: 'Invalid section' });
+        }
+
+        const result = await TextbookLesson.markSectionDone(userId, lessonId, section);
+
+        // Award XP + streak only when the lesson transitions to completed.
+        if (result.justCompleted) {
+            try {
+                await streakService.updateStreak(userId);
+                await streakService.addXP(userId, 20);
+            } catch (e) {
+                console.error('Streak/XP update failed (non-blocking):', e);
+            }
+        }
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error('Mark section done error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// POST /api/lessons/writing/:exerciseId/submit — body: { answerZh: string }
+exports.submitWritingExercise = async (req, res) => {
+    try {
+        const exerciseId = req.params.exerciseId;
+        const userId = req.user.userId;
+        const { answerZh } = req.body || {};
+        if (!answerZh || typeof answerZh !== 'string' || !answerZh.trim()) {
+            return res.status(400).json({ success: false, message: 'answerZh required' });
+        }
+        const result = await TextbookLesson.submitWriting(userId, exerciseId, answerZh);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error('Submit writing error:', error);
+        const status = error.message === 'exercise not found' ? 404 : 500;
+        res.status(status).json({ success: false, message: error.message });
+    }
+};
+
+// ---- Admin --------------------------------------------------------------
+
+// POST /api/lessons/textbook — create new textbook lesson skeleton
+exports.createTextbookLesson = async (req, res) => {
+    try {
+        const id = await TextbookLesson.createTextbook({
+            courseId:      req.body.courseId,
+            title:         req.body.title,
+            description:   req.body.description,
+            passageZh:     req.body.passageZh,
+            passagePinyin: req.body.passagePinyin,
+            passageVi:     req.body.passageVi,
+            objectivesVi:  req.body.objectivesVi,
+            hskLevel:      req.body.hskLevel,
+            orderIndex:    req.body.orderIndex,
+        });
+        res.status(201).json({ success: true, data: { id } });
+    } catch (error) {
+        console.error('Create textbook lesson error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// PUT /api/lessons/:id/textbook — update passage/objectives/etc.
+exports.updateTextbookLesson = async (req, res) => {
+    try {
+        const lessonId = req.params.id;
+        const allowed = [
+            'title', 'description', 'passage_zh', 'passage_pinyin', 'passage_vi',
+            'objectives_vi', 'hsk_level', 'order_index', 'is_active', 'passage_audio_url',
+        ];
+        const update = {};
+        for (const k of allowed) {
+            if (Object.prototype.hasOwnProperty.call(req.body, k)) update[k] = req.body[k];
+        }
+        if (Object.keys(update).length === 0) {
+            return res.status(400).json({ success: false, message: 'No updatable fields' });
+        }
+        await Lesson.update(lessonId, update);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Update textbook lesson error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// POST /api/lessons/:id/vocabulary — body: { vocabularyId, orderIndex?, noteVi? }
+exports.attachVocabulary = async (req, res) => {
+    try {
+        const lessonId = req.params.id;
+        const { vocabularyId, orderIndex, noteVi } = req.body || {};
+        if (!vocabularyId) {
+            return res.status(400).json({ success: false, message: 'vocabularyId required' });
+        }
+        await TextbookLesson.attachVocabulary(lessonId, vocabularyId, orderIndex || 0, noteVi || null);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Attach vocab error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// DELETE /api/lessons/:id/vocabulary/:vocabId
+exports.detachVocabulary = async (req, res) => {
+    try {
+        await TextbookLesson.detachVocabulary(req.params.id, req.params.vocabId);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Detach vocab error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// POST /api/lessons/:id/grammar — body: { grammarPatternId, orderIndex? }
+exports.attachGrammar = async (req, res) => {
+    try {
+        const { grammarPatternId, orderIndex } = req.body || {};
+        if (!grammarPatternId) {
+            return res.status(400).json({ success: false, message: 'grammarPatternId required' });
+        }
+        await TextbookLesson.attachGrammar(req.params.id, grammarPatternId, orderIndex || 0);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Attach grammar error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// POST /api/lessons/:id/writing — admin add a writing exercise
+exports.addWritingExercise = async (req, res) => {
+    try {
+        const id = await TextbookLesson.addWritingExercise(req.params.id, req.body || {});
+        res.status(201).json({ success: true, data: { id } });
+    } catch (error) {
+        console.error('Add writing exercise error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 };

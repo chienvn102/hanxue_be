@@ -92,8 +92,10 @@ async function pronunciation(req, res) {
             requestId
         );
 
-        // Generate detailed feedback using rule engine
-        result.feedback = pronunciationFeedbackService.generateFeedback(result);
+        // Generate bilingual feedback (Chinese for TTS, Vietnamese for display)
+        const bilingual = pronunciationFeedbackService.generateFeedback(result);
+        result.feedback = bilingual.zh;     // backwards compat: TTS reads this
+        result.feedbackVi = bilingual.vi;   // new: shown to learner
 
         // Increment speech count after successful request
         incrementDailySpeechCount(userId).catch(err => {

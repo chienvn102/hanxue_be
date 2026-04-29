@@ -37,12 +37,13 @@ const Lesson = {
     },
 
     create: async (data) => {
-        const { course_id, title, description, youtube_id, duration, order_index } = data;
+        // After migration 004, lessons no longer carry youtube_id/duration; the
+        // textbook fields are populated via TextbookLesson.createTextbook().
+        const { course_id, title, description, order_index } = data;
         const [result] = await db.execute(
-            `INSERT INTO lessons 
-            (course_id, title, description, youtube_id, duration, order_index) 
-            VALUES (?, ?, ?, ?, ?, ?)`,
-            [course_id, title, description || null, youtube_id, duration || 0, order_index || 0]
+            `INSERT INTO lessons (course_id, title, description, order_index, is_active)
+             VALUES (?, ?, ?, ?, TRUE)`,
+            [course_id, title, description || null, order_index || 0]
         );
         return result.insertId;
     },
