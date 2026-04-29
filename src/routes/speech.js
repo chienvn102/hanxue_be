@@ -8,6 +8,7 @@ const express = require('express');
 const multer = require('multer');
 const { authMiddleware } = require('../middleware/auth'); // P0 fix: destructure
 const speechController = require('../controllers/speech.controller');
+const { speechRateLimit } = require('../middleware/speechRateLimit');
 
 const router = express.Router();
 
@@ -29,13 +30,13 @@ const upload = multer({
 // All speech routes require auth
 router.use(authMiddleware);
 
-// POST /api/speech/transcribe
-router.post('/transcribe', upload.single('audio'), speechController.transcribe);
+// Session-based quota: only the heavy operations (transcribe, pronunciation)
+// consume daily quota. TTS (sample/feedback playback) is free so 1 practice
+// session = 1 quota unit (the pronunciation submit), not 2-3.
+router.post('/transcribe', speechRateLimit, upload.single('audio'), speechController.transcribe);
+router.post('/pronunciation', speechRateLimit, upload.single('audio'), speechController.pronunciation);
 
-// POST /api/speech/pronunciation
-router.post('/pronunciation', upload.single('audio'), speechController.pronunciation);
-
-// POST /api/speech/tts (uses global json parser from index.js)
+// POST /api/speech/tts — no daily quota; light per-request guard via text length cap in controller.
 router.post('/tts', speechController.tts);
 
 // Multer error handler

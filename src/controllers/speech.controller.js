@@ -8,6 +8,8 @@
 
 const crypto = require('crypto');
 const azureSpeech = require('../services/azureSpeech');
+const pronunciationFeedbackService = require('../services/pronunciationFeedback.service');
+const { incrementDailySpeechCount } = require('../middleware/speechRateLimit');
 
 function genRequestId() {
     return 'speech-' + crypto.randomBytes(4).toString('hex');
@@ -33,6 +35,11 @@ async function transcribe(req, res) {
         console.log(`[${requestId}] Transcribe: userId=${userId}, fileSize=${req.file.size}, mime=${req.file.mimetype}`);
 
         const result = await azureSpeech.transcribe(req.file.buffer, requestId);
+
+        // Increment speech count after successful request
+        incrementDailySpeechCount(userId).catch(err => {
+            console.error('Failed to increment speech count:', err);
+        });
 
         return res.json({
             success: true,
@@ -85,6 +92,14 @@ async function pronunciation(req, res) {
             requestId
         );
 
+        // Generate detailed feedback using rule engine
+        result.feedback = pronunciationFeedbackService.generateFeedback(result);
+
+        // Increment speech count after successful request
+        incrementDailySpeechCount(userId).catch(err => {
+            console.error('Failed to increment speech count:', err);
+        });
+
         return res.json({
             success: true,
             data: result,
@@ -131,6 +146,9 @@ async function tts(req, res) {
         console.log(`[${requestId}] TTS: userId=${userId}, textLen=${text.length}`);
 
         const audioBuffer = await azureSpeech.synthesize(text.trim(), requestId);
+
+        // TTS does NOT consume daily quota — sample/feedback playback should be free
+        // so a practice session costs 1 unit (the pronunciation submit), not 2-3.
 
         res.set({
             'Content-Type': 'audio/wav',
