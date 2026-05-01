@@ -27,9 +27,13 @@ router.delete('/:id', adminMiddleware, roleMiddleware(['admin']), lessonControll
 router.post('/textbook', adminMiddleware, roleMiddleware(['admin']), lessonController.createTextbookLesson);
 router.put('/:id/textbook', adminMiddleware, roleMiddleware(['admin']), lessonController.updateTextbookLesson);
 router.post('/:id/vocabulary', adminMiddleware, roleMiddleware(['admin']), lessonController.attachVocabulary);
+router.patch('/:id/vocabulary/:vocabId', adminMiddleware, roleMiddleware(['admin']), lessonController.updateVocabularyLink);
 router.delete('/:id/vocabulary/:vocabId', adminMiddleware, roleMiddleware(['admin']), lessonController.detachVocabulary);
 router.post('/:id/grammar', adminMiddleware, roleMiddleware(['admin']), lessonController.attachGrammar);
+router.delete('/:id/grammar/:grammarId', adminMiddleware, roleMiddleware(['admin']), lessonController.detachGrammar);
 router.post('/:id/writing', adminMiddleware, roleMiddleware(['admin']), lessonController.addWritingExercise);
+router.patch('/:id/writing/:writingId', adminMiddleware, roleMiddleware(['admin']), lessonController.updateWritingExercise);
+router.delete('/:id/writing/:writingId', adminMiddleware, roleMiddleware(['admin']), lessonController.deleteWritingExercise);
 
 // Admin routes - Contents (legacy)
 router.post('/:id/contents', adminMiddleware, roleMiddleware(['admin']), lessonController.addContent);

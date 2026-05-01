@@ -165,12 +165,39 @@ const TextbookLesson = {
         );
     },
 
+    async updateVocabularyLink(lessonId, vocabularyId, data) {
+        const allowed = { order_index: 'orderIndex', note_vi: 'noteVi' };
+        const updates = [];
+        const values = [];
+        for (const [col, key] of Object.entries(allowed)) {
+            if (data[key] !== undefined) {
+                updates.push(`${col} = ?`);
+                values.push(data[key]);
+            }
+        }
+        if (updates.length === 0) return 0;
+        values.push(lessonId, vocabularyId);
+        const [result] = await db.execute(
+            `UPDATE lesson_vocabulary SET ${updates.join(', ')}
+              WHERE lesson_id = ? AND vocabulary_id = ?`,
+            values
+        );
+        return result.affectedRows;
+    },
+
     async attachGrammar(lessonId, grammarPatternId, orderIndex = 0) {
         await db.execute(
             `INSERT INTO lesson_grammar (lesson_id, grammar_pattern_id, order_index)
              VALUES (?, ?, ?)
              ON DUPLICATE KEY UPDATE order_index = VALUES(order_index)`,
             [lessonId, grammarPatternId, orderIndex]
+        );
+    },
+
+    async detachGrammar(lessonId, grammarPatternId) {
+        await db.execute(
+            `DELETE FROM lesson_grammar WHERE lesson_id = ? AND grammar_pattern_id = ?`,
+            [lessonId, grammarPatternId]
         );
     },
 
@@ -200,6 +227,48 @@ const TextbookLesson = {
             ]
         );
         return result.insertId;
+    },
+
+    async updateWritingExercise(exerciseId, lessonId, data) {
+        const allowed = {
+            prompt_vi: 'promptVi',
+            prompt_zh: 'promptZh',
+            expected_keywords: 'expectedKeywords',
+            sample_answer_zh: 'sampleAnswerZh',
+            sample_answer_pinyin: 'sampleAnswerPinyin',
+            sample_answer_vi: 'sampleAnswerVi',
+            min_chars: 'minChars',
+            max_chars: 'maxChars',
+            order_index: 'orderIndex',
+        };
+        const updates = [];
+        const values = [];
+        for (const [col, key] of Object.entries(allowed)) {
+            if (data[key] !== undefined) {
+                updates.push(`${col} = ?`);
+                if (col === 'expected_keywords') {
+                    values.push(data[key] ? JSON.stringify(data[key]) : null);
+                } else {
+                    values.push(data[key]);
+                }
+            }
+        }
+        if (updates.length === 0) return 0;
+        values.push(exerciseId, lessonId);
+        const [result] = await db.execute(
+            `UPDATE lesson_writing_exercises SET ${updates.join(', ')}
+              WHERE id = ? AND lesson_id = ?`,
+            values
+        );
+        return result.affectedRows;
+    },
+
+    async deleteWritingExercise(exerciseId, lessonId) {
+        const [result] = await db.execute(
+            `DELETE FROM lesson_writing_exercises WHERE id = ? AND lesson_id = ?`,
+            [exerciseId, lessonId]
+        );
+        return result.affectedRows;
     },
 
     /**

@@ -232,7 +232,8 @@ async function startExam(req, res) {
                     audioPlayCount: q.audio_play_count,
                     options: q.options,
                     optionImages: q.option_images,
-                    points: q.points
+                    points: q.points,
+                    meta: q.meta
                     // No correct_answer or explanation
                 }))
             }))

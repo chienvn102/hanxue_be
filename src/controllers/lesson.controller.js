@@ -310,6 +310,24 @@ exports.detachVocabulary = async (req, res) => {
     }
 };
 
+// PATCH /api/lessons/:id/vocabulary/:vocabId — body: { orderIndex?, noteVi? }
+exports.updateVocabularyLink = async (req, res) => {
+    try {
+        const affected = await TextbookLesson.updateVocabularyLink(
+            req.params.id,
+            req.params.vocabId,
+            req.body || {}
+        );
+        if (affected === 0) {
+            return res.status(404).json({ success: false, message: 'Link not found or no changes' });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Update vocab link error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
 // POST /api/lessons/:id/grammar — body: { grammarPatternId, orderIndex? }
 exports.attachGrammar = async (req, res) => {
     try {
@@ -325,6 +343,17 @@ exports.attachGrammar = async (req, res) => {
     }
 };
 
+// DELETE /api/lessons/:id/grammar/:grammarId
+exports.detachGrammar = async (req, res) => {
+    try {
+        await TextbookLesson.detachGrammar(req.params.id, req.params.grammarId);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Detach grammar error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
 // POST /api/lessons/:id/writing — admin add a writing exercise
 exports.addWritingExercise = async (req, res) => {
     try {
@@ -332,6 +361,41 @@ exports.addWritingExercise = async (req, res) => {
         res.status(201).json({ success: true, data: { id } });
     } catch (error) {
         console.error('Add writing exercise error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// PATCH /api/lessons/:id/writing/:writingId — admin update a writing exercise
+exports.updateWritingExercise = async (req, res) => {
+    try {
+        const affected = await TextbookLesson.updateWritingExercise(
+            req.params.writingId,
+            req.params.id,
+            req.body || {}
+        );
+        if (affected === 0) {
+            return res.status(404).json({ success: false, message: 'Exercise not found or no changes' });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Update writing exercise error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+// DELETE /api/lessons/:id/writing/:writingId
+exports.deleteWritingExercise = async (req, res) => {
+    try {
+        const affected = await TextbookLesson.deleteWritingExercise(
+            req.params.writingId,
+            req.params.id
+        );
+        if (affected === 0) {
+            return res.status(404).json({ success: false, message: 'Exercise not found' });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete writing exercise error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 };

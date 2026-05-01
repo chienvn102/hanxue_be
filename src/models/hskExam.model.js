@@ -65,7 +65,8 @@ async function getExamById(id, includeSections = false) {
             section.questions = questions.map(q => ({
                 ...q,
                 options: q.options ? JSON.parse(q.options) : [],
-                option_images: q.option_images ? JSON.parse(q.option_images) : []
+                option_images: q.option_images ? JSON.parse(q.option_images) : [],
+                meta: q.meta ? JSON.parse(q.meta) : null
             }));
         }
     }
@@ -173,7 +174,8 @@ async function getQuestionsBySection(sectionId) {
     return rows.map(q => ({
         ...q,
         options: q.options ? JSON.parse(q.options) : [],
-        option_images: q.option_images ? JSON.parse(q.option_images) : []
+        option_images: q.option_images ? JSON.parse(q.option_images) : [],
+        meta: q.meta ? JSON.parse(q.meta) : null
     }));
 }
 
@@ -181,22 +183,23 @@ async function createQuestion(data) {
     const {
         section_id, question_number, question_type, question_text, question_image, question_audio,
         audio_start_time, audio_end_time, audio_play_count, options, option_images,
-        correct_answer, explanation, difficulty, points
+        correct_answer, explanation, difficulty, points, meta
     } = data;
 
     const [result] = await db.execute(
-        `INSERT INTO hsk_questions 
+        `INSERT INTO hsk_questions
          (section_id, question_number, question_type, question_text, question_image, question_audio,
           audio_start_time, audio_end_time, audio_play_count, options, option_images,
-          correct_answer, explanation, difficulty, points)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          correct_answer, explanation, difficulty, points, meta)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             section_id, question_number || 1, question_type || 'multiple_choice',
             question_text || null, question_image || null, question_audio || null,
             audio_start_time || 0, audio_end_time || 0, audio_play_count || 2,
             options ? JSON.stringify(options) : null,
             option_images ? JSON.stringify(option_images) : null,
-            correct_answer, explanation || null, difficulty || 1, points || 1
+            correct_answer, explanation || null, difficulty || 1, points || 1,
+            meta ? JSON.stringify(meta) : null
         ]
     );
 
@@ -223,7 +226,7 @@ async function updateQuestion(id, data) {
     const allowedFields = [
         'question_number', 'question_type', 'question_text', 'question_image', 'question_audio',
         'audio_start_time', 'audio_end_time', 'audio_play_count', 'options', 'option_images',
-        'correct_answer', 'explanation', 'difficulty', 'points'
+        'correct_answer', 'explanation', 'difficulty', 'points', 'meta'
     ];
     const updates = [];
     const values = [];
@@ -231,7 +234,7 @@ async function updateQuestion(id, data) {
     for (const field of allowedFields) {
         if (data[field] !== undefined) {
             updates.push(`${field} = ?`);
-            if (['options', 'option_images'].includes(field) && typeof data[field] === 'object') {
+            if (['options', 'option_images', 'meta'].includes(field) && data[field] !== null && typeof data[field] === 'object') {
                 values.push(JSON.stringify(data[field]));
             } else {
                 values.push(data[field]);
