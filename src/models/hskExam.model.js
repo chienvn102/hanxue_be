@@ -546,7 +546,20 @@ function gradeAnswer(questionType, userAnswer, correctAnswer) {
         return u.trim() === c.trim();
     }
 
-    // Default — labels (A/B/C), TRUE/FALSE/Đúng/Sai, fill_blank text
+    // true_false: chấp nhận đồng thời {A, TRUE, Đúng} ↔ {B, FALSE, Sai}.
+    // FE renderer mới mặc định style="AB" → emit 'A'/'B'; admin form + seed
+    // dùng 'Đúng'/'Sai'; legacy có thể dùng 'TRUE'/'FALSE'. Normalize hết.
+    if (questionType === 'true_false') {
+        const norm = (s) => {
+            const t = s.trim().toLowerCase();
+            if (t === 'a' || t === 'true' || t === 'đúng' || t === 'dung') return 'T';
+            if (t === 'b' || t === 'false' || t === 'sai') return 'F';
+            return t;
+        };
+        return norm(u) === norm(c);
+    }
+
+    // Default — labels (A/B/C), fill_blank text
     return u.trim().toLowerCase() === c.trim().toLowerCase();
 }
 
