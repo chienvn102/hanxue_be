@@ -56,17 +56,27 @@ async function getExamById(id, includeSections = false) {
         );
         exam.sections = sections;
 
-        // Get questions for each section
+        // Get questions + groups for each section (Phase A — refactor HSK 1-3)
         for (const section of exam.sections) {
-            const [questions] = await db.execute(
-                'SELECT * FROM hsk_questions WHERE section_id = ? ORDER BY question_number',
-                [section.id]
-            );
+            const [[questions], [groups]] = await Promise.all([
+                db.execute(
+                    'SELECT * FROM hsk_questions WHERE section_id = ? ORDER BY question_number',
+                    [section.id]
+                ),
+                db.execute(
+                    'SELECT * FROM hsk_question_groups WHERE section_id = ? ORDER BY order_index, id',
+                    [section.id]
+                ),
+            ]);
             section.questions = questions.map(q => ({
                 ...q,
                 options: q.options ? JSON.parse(q.options) : [],
                 option_images: q.option_images ? JSON.parse(q.option_images) : [],
                 meta: q.meta ? JSON.parse(q.meta) : null
+            }));
+            section.groups = groups.map(g => ({
+                ...g,
+                content: g.content ? JSON.parse(g.content) : null
             }));
         }
     }
@@ -179,22 +189,86 @@ async function getQuestionsBySection(sectionId) {
     }));
 }
 
+// ============================================================
+// QUESTION GROUP OPERATIONS (Phase A — refactor HSK 1-3)
+// ============================================================
+
+async function getGroupsBySection(sectionId) {
+    const [rows] = await db.execute(
+        'SELECT * FROM hsk_question_groups WHERE section_id = ? ORDER BY order_index, id',
+        [sectionId]
+    );
+    return rows.map(g => ({
+        ...g,
+        content: g.content ? JSON.parse(g.content) : null
+    }));
+}
+
+async function createGroup(data) {
+    const { section_id, group_type, title_vi, instructions_vi, content, order_index } = data;
+    const [result] = await db.execute(
+        `INSERT INTO hsk_question_groups
+            (section_id, group_type, title_vi, instructions_vi, content, order_index)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+            section_id,
+            group_type,
+            title_vi || null,
+            instructions_vi || null,
+            content ? JSON.stringify(content) : null,
+            order_index || 0,
+        ]
+    );
+    return result.insertId;
+}
+
+async function updateGroup(id, data) {
+    const allowedFields = ['group_type', 'title_vi', 'instructions_vi', 'content', 'order_index'];
+    const updates = [];
+    const values = [];
+    for (const field of allowedFields) {
+        if (data[field] !== undefined) {
+            updates.push(`${field} = ?`);
+            if (field === 'content' && data[field] !== null && typeof data[field] === 'object') {
+                values.push(JSON.stringify(data[field]));
+            } else {
+                values.push(data[field]);
+            }
+        }
+    }
+    if (updates.length === 0) return 0;
+    values.push(id);
+    const [result] = await db.execute(
+        `UPDATE hsk_question_groups SET ${updates.join(', ')} WHERE id = ?`,
+        values
+    );
+    return result.affectedRows;
+}
+
+async function deleteGroup(id) {
+    const [result] = await db.execute('DELETE FROM hsk_question_groups WHERE id = ?', [id]);
+    return result.affectedRows;
+}
+
 async function createQuestion(data) {
     const {
-        section_id, question_number, question_type, question_text, question_image, question_audio,
+        section_id, group_id, question_number, question_type, question_text, passage, statement,
+        question_image, question_audio, transcript,
         audio_start_time, audio_end_time, audio_play_count, options, option_images,
         correct_answer, explanation, difficulty, points, meta
     } = data;
 
     const [result] = await db.execute(
         `INSERT INTO hsk_questions
-         (section_id, question_number, question_type, question_text, question_image, question_audio,
+         (section_id, group_id, question_number, question_type, question_text, passage, statement,
+          question_image, question_audio, transcript,
           audio_start_time, audio_end_time, audio_play_count, options, option_images,
           correct_answer, explanation, difficulty, points, meta)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            section_id, question_number || 1, question_type || 'multiple_choice',
-            question_text || null, question_image || null, question_audio || null,
+            section_id, group_id || null, question_number || 1, question_type || 'multiple_choice',
+            question_text || null, passage || null, statement || null,
+            question_image || null, question_audio || null, transcript || null,
             audio_start_time || 0, audio_end_time || 0, audio_play_count || 2,
             options ? JSON.stringify(options) : null,
             option_images ? JSON.stringify(option_images) : null,
@@ -224,7 +298,9 @@ async function createQuestion(data) {
 
 async function updateQuestion(id, data) {
     const allowedFields = [
-        'question_number', 'question_type', 'question_text', 'question_image', 'question_audio',
+        'group_id', 'question_number', 'question_type',
+        'question_text', 'passage', 'statement',
+        'question_image', 'question_audio', 'transcript',
         'audio_start_time', 'audio_end_time', 'audio_play_count', 'options', 'option_images',
         'correct_answer', 'explanation', 'difficulty', 'points', 'meta'
     ];
@@ -322,9 +398,10 @@ async function completeAttempt(attemptId) {
             throw err;  // catch block handles rollback
         }
 
-        // Fetch answers WITH correct_answer and points for grading
+        // Fetch answers WITH correct_answer + question_type for grading per type
         const [answers] = await conn.execute(
-            `SELECT ua.*, q.correct_answer, q.points AS question_points, q.section_id, s.section_type
+            `SELECT ua.*, q.correct_answer, q.question_type, q.points AS question_points,
+                    q.section_id, s.section_type
              FROM hsk_user_answers ua
              JOIN hsk_questions q ON ua.question_id = q.id
              JOIN hsk_sections s ON q.section_id = s.id
@@ -339,10 +416,7 @@ async function completeAttempt(attemptId) {
         // Grade each answer by comparing user_answer with correct_answer
         for (const ans of answers) {
             totalTimeSpent += ans.time_spent_seconds || 0;
-
-            const userAnswer = (ans.user_answer || '').trim().toLowerCase();
-            const correctAnswer = (ans.correct_answer || '').trim().toLowerCase();
-            const isCorrect = userAnswer !== '' && userAnswer === correctAnswer;
+            const isCorrect = gradeAnswer(ans.question_type, ans.user_answer, ans.correct_answer);
             const points = isCorrect ? (ans.question_points || 1) : 0;
 
             // Update the answer row with grading result
@@ -445,6 +519,37 @@ async function getAttemptWithAnswers(attemptId) {
     return rows;
 }
 
+// ============================================================
+// GRADING HELPERS
+// ============================================================
+
+/**
+ * So sánh user_answer với correct_answer theo từng question_type.
+ *
+ *   - sentence_assembly (HSK 3 writing P1): LOOSE — strip whitespace + dấu câu CN/EN
+ *   - fill_hanzi (HSK 3 writing P2): trim only, exact match (chữ Hán có case-sensitivity về độ chính xác)
+ *   - default (MCQ, T/F, fill_blank, ...): trim().toLowerCase() exact
+ */
+function gradeAnswer(questionType, userAnswer, correctAnswer) {
+    const u = userAnswer || '';
+    const c = correctAnswer || '';
+    if (u === '' || c === '') return false;
+
+    if (questionType === 'sentence_assembly') {
+        const norm = (s) => s
+            .replace(/[\s　]+/g, '')
+            .replace(/[，。！？；：、,.!?;:]/g, '');
+        return norm(u) === norm(c);
+    }
+
+    if (questionType === 'fill_hanzi') {
+        return u.trim() === c.trim();
+    }
+
+    // Default — labels (A/B/C), TRUE/FALSE/Đúng/Sai, fill_blank text
+    return u.trim().toLowerCase() === c.trim().toLowerCase();
+}
+
 module.exports = {
     // Exams
     getExamList,
@@ -457,6 +562,11 @@ module.exports = {
     createSection,
     updateSection,
     deleteSection,
+    // Question Groups (Phase A — refactor HSK 1-3)
+    getGroupsBySection,
+    createGroup,
+    updateGroup,
+    deleteGroup,
     // Questions
     getQuestionsBySection,
     createQuestion,

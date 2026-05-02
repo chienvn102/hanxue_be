@@ -157,6 +157,115 @@ async function deleteQuestion(req, res) {
 }
 
 // ============================================================
+// ADMIN - QUESTION GROUPS (Phase A — refactor HSK 1-3)
+// ============================================================
+
+async function listGroups(req, res) {
+    try {
+        const groups = await HskExamModel.getGroupsBySection(req.params.sectionId);
+        res.json({ data: groups });
+    } catch (err) {
+        console.error('List groups error:', err);
+        res.status(500).json({ error: 'Failed to list groups' });
+    }
+}
+
+async function createGroup(req, res) {
+    try {
+        const { group_type, title_vi, instructions_vi, content, order_index } = req.body || {};
+        if (!group_type) {
+            return res.status(400).json({ success: false, message: 'group_type required' });
+        }
+        const id = await HskExamModel.createGroup({
+            section_id: req.params.sectionId,
+            group_type,
+            title_vi,
+            instructions_vi,
+            content,
+            order_index,
+        });
+        const groups = await HskExamModel.getGroupsBySection(req.params.sectionId);
+        res.status(201).json({ success: true, data: groups.find(g => g.id === id) });
+    } catch (err) {
+        console.error('Create group error:', err);
+        res.status(500).json({ success: false, message: 'Failed to create group', error: err.message });
+    }
+}
+
+async function updateGroup(req, res) {
+    try {
+        const affected = await HskExamModel.updateGroup(req.params.groupId, req.body || {});
+        if (affected === 0) return res.status(404).json({ success: false, message: 'Group not found or no changes' });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Update group error:', err);
+        res.status(500).json({ success: false, message: 'Failed to update group', error: err.message });
+    }
+}
+
+async function deleteGroup(req, res) {
+    try {
+        const affected = await HskExamModel.deleteGroup(req.params.groupId);
+        if (affected === 0) return res.status(404).json({ success: false, message: 'Group not found' });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Delete group error:', err);
+        res.status(500).json({ success: false, message: 'Failed to delete group', error: err.message });
+    }
+}
+
+// ============================================================
+// PUBLIC - ANSWER VIEW (transcript + correct answers)
+// ============================================================
+
+async function getExamAnswers(req, res) {
+    try {
+        const exam = await HskExamModel.getExamById(req.params.id, true);
+        if (!exam) return res.status(404).json({ error: 'Exam not found' });
+        // Public — returns full questions including transcript, passage, statement,
+        // correct_answer, explanation. NO attempt or completed-status check.
+        // Shape MIRRORS startExam (sections snake_case, questions camelCase) so FE
+        // can reuse <QuestionRenderer>. Adds correctAnswer / explanation / transcript.
+        const payload = {
+            id: exam.id,
+            title: exam.title,
+            hsk_level: exam.hsk_level,
+            exam_type: exam.exam_type,
+            duration_minutes: exam.duration_minutes,
+            sections: exam.sections.map(section => ({
+                ...section,
+                groups: section.groups || [],
+                questions: section.questions.map(q => ({
+                    id: q.id,
+                    groupId: q.group_id,
+                    questionNumber: q.question_number,
+                    questionType: q.question_type,
+                    questionText: q.question_text,
+                    passage: q.passage,
+                    statement: q.statement,
+                    transcript: q.transcript,
+                    questionImage: q.question_image,
+                    questionAudio: q.question_audio,
+                    audioStartTime: q.audio_start_time,
+                    audioEndTime: q.audio_end_time,
+                    audioPlayCount: q.audio_play_count,
+                    options: q.options,
+                    optionImages: q.option_images,
+                    correctAnswer: q.correct_answer,
+                    explanation: q.explanation,
+                    points: q.points,
+                    meta: q.meta,
+                })),
+            })),
+        };
+        res.json(payload);
+    } catch (err) {
+        console.error('Get exam answers error:', err);
+        res.status(500).json({ error: 'Failed to get exam answers' });
+    }
+}
+
+// ============================================================
 // CLIENT - TAKING EXAMS
 // ============================================================
 
@@ -220,11 +329,15 @@ async function startExam(req, res) {
             })),
             sections: exam.sections.map(section => ({
                 ...section,
+                groups: section.groups || [],
                 questions: section.questions.map(q => ({
                     id: q.id,
+                    groupId: q.group_id,
                     questionNumber: q.question_number,
                     questionType: q.question_type,
                     questionText: q.question_text,
+                    passage: q.passage,
+                    statement: q.statement,
                     questionImage: q.question_image,
                     questionAudio: q.question_audio,
                     audioStartTime: q.audio_start_time,
@@ -234,7 +347,7 @@ async function startExam(req, res) {
                     optionImages: q.option_images,
                     points: q.points,
                     meta: q.meta
-                    // No correct_answer or explanation
+                    // No correct_answer, explanation, or transcript (transcript only via public answers endpoint)
                 }))
             }))
         };
@@ -411,6 +524,13 @@ module.exports = {
     createQuestion,
     updateQuestion,
     deleteQuestion,
+    // Admin — Question Groups
+    listGroups,
+    createGroup,
+    updateGroup,
+    deleteGroup,
+    // Public
+    getExamAnswers,
     // Client
     getPublicExamList,
     startExam,

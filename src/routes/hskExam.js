@@ -16,6 +16,9 @@ const adminMiddleware = require('../middleware/admin.middleware');
 // Get list of active exams (public)
 router.get('/public', hskExamController.getPublicExamList);
 
+// Get full exam with answers + transcripts (public — không cần làm bài trước)
+router.get('/:id/answers', hskExamController.getExamAnswers);
+
 // ============================================================
 // AUTHENTICATED USER ROUTES (for students taking exams)
 // ============================================================
@@ -82,6 +85,22 @@ router.put('/questions/:questionId', adminMiddleware, hskExamController.updateQu
 
 // Delete question
 router.delete('/questions/:questionId', adminMiddleware, hskExamController.deleteQuestion);
+
+// ============================================================
+// ADMIN ROUTES - Question Group Management (Phase A — refactor HSK 1-3)
+// ============================================================
+
+// List groups for section
+router.get('/sections/:sectionId/groups', adminMiddleware, hskExamController.listGroups);
+
+// Create group for section (image_grid / word_bank / reply_bank / passage)
+router.post('/sections/:sectionId/groups', adminMiddleware, hskExamController.createGroup);
+
+// Update group
+router.put('/groups/:groupId', adminMiddleware, hskExamController.updateGroup);
+
+// Delete group (FK CASCADE sets question.group_id = NULL)
+router.delete('/groups/:groupId', adminMiddleware, hskExamController.deleteGroup);
 
 module.exports = router;
 
