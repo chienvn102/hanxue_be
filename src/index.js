@@ -70,6 +70,7 @@ app.use('/api/hsk-exams', require('./routes/hskExam'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/speech', require('./routes/speech'));
 app.use('/api/practice', require('./routes/practice'));
+app.use('/api/leaderboard', require('./routes/leaderboard'));
 
 // 404 handler
 app.use((req, res) => {

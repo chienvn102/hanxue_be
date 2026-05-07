@@ -5,11 +5,16 @@ const TextbookLesson = require('../models/textbookLesson.model');
 const db = require('../config/database');
 const streakService = require('../services/streak.service');
 
-// Get all lessons for a course
+// Get all lessons for a course.
+// ?include_inactive=1: trả cả bài soft-deleted — chỉ cho admin (route đã gắn
+// admin middleware ở admin context). Public endpoint giữ default behaviour.
 exports.getLessonsByCourse = async (req, res) => {
     try {
         const userId = req.user ? req.user.userId : null;
-        const lessons = await Lesson.findByCourseId(req.params.courseId, userId);
+        // Admin token (decoded by optionalAuth) carries isAdmin=true. User tokens
+        // do not, so this guards the include_inactive switch to admin only.
+        const includeInactive = req.query.include_inactive === '1' && req.user?.isAdmin === true;
+        const lessons = await Lesson.findByCourseId(req.params.courseId, userId, includeInactive);
         res.json({ success: true, data: lessons });
     } catch (error) {
         console.error('Error fetching lessons:', error);
@@ -179,7 +184,9 @@ exports.getTextbookLesson = async (req, res) => {
     try {
         const lessonId = req.params.id;
         const userId = req.user ? req.user.userId : null;
-        const payload = await TextbookLesson.getFullPayload(lessonId, userId);
+        // Admin token (decoded by optionalAuth) → cho xem cả bài soft-deleted.
+        const includeInactive = req.user?.isAdmin === true;
+        const payload = await TextbookLesson.getFullPayload(lessonId, userId, includeInactive);
         if (!payload) {
             return res.status(404).json({ success: false, message: 'Lesson not found' });
         }

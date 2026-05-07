@@ -1,8 +1,10 @@
 const db = require('../config/database');
 
 const Lesson = {
-    // List lessons by course ID (with optional user progress)
-    findByCourseId: async (courseId, userId = null) => {
+    // List lessons by course ID (with optional user progress).
+    // includeInactive=true: trả cả bài soft-deleted (admin context).
+    findByCourseId: async (courseId, userId = null, includeInactive = false) => {
+        const activeFilter = includeInactive ? '' : 'AND l.is_active = TRUE';
         const [rows] = await db.execute(
             `SELECT l.*,
                     (SELECT COUNT(*) FROM contents WHERE lesson_id = l.id) as content_count,
@@ -12,7 +14,7 @@ const Lesson = {
                      ORDER BY FIELD(ulp.status, 'completed', 'in_progress', 'not_started')
                      LIMIT 1) as progress_status
              FROM lessons l
-             WHERE l.course_id = ? AND l.is_active = TRUE
+             WHERE l.course_id = ? ${activeFilter}
              ORDER BY l.order_index ASC`,
             [userId, courseId]
         );
@@ -39,11 +41,11 @@ const Lesson = {
     create: async (data) => {
         // After migration 004, lessons no longer carry youtube_id/duration; the
         // textbook fields are populated via TextbookLesson.createTextbook().
-        const { course_id, title, description, order_index } = data;
+        const { course_id, title, description, order_index, hsk_level } = data;
         const [result] = await db.execute(
-            `INSERT INTO lessons (course_id, title, description, order_index, is_active)
-             VALUES (?, ?, ?, ?, TRUE)`,
-            [course_id, title, description || null, order_index || 0]
+            `INSERT INTO lessons (course_id, title, description, order_index, hsk_level, is_active)
+             VALUES (?, ?, ?, ?, ?, TRUE)`,
+            [course_id, title, description || null, order_index || 0, hsk_level || 1]
         );
         return result.insertId;
     },

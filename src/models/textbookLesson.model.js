@@ -10,8 +10,9 @@ const TextbookLesson = {
     /**
      * Full read for /lessons/:id/textbook — pulls passage + vocab + grammar
      * + exercises + user progress in parallel.
+     * includeInactive=true: lấy cả bài soft-deleted (admin context).
      */
-    async getFullPayload(lessonId, userId = null) {
+    async getFullPayload(lessonId, userId = null, includeInactive = false) {
         const [
             [lessonRows],
             [vocabRows],
@@ -25,7 +26,7 @@ const TextbookLesson = {
                         passage_vi, passage_audio_url, objectives_vi, hsk_level,
                         order_index, is_active
                    FROM lessons
-                  WHERE id = ? AND is_active = TRUE`,
+                  WHERE id = ?` + (includeInactive ? '' : ' AND is_active = TRUE'),
                 [lessonId]
             ),
             db.execute(
