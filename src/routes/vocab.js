@@ -15,6 +15,9 @@ router.get('/', optionalAuth, vocabController.list);
 // Fulltext search (must be before /:id to avoid conflict)
 router.get('/search/fulltext', vocabController.searchFulltext);
 
+// List all canonical themes (must be before /:id)
+router.get('/themes', vocabController.listThemes);
+
 // Get single vocabulary
 router.get('/:id', vocabController.getById);
 

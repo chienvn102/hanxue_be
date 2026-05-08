@@ -51,6 +51,9 @@ router.get('/:id', adminMiddleware, hskExamController.getExamDetail);
 // Create new exam
 router.post('/', adminMiddleware, hskExamController.createExam);
 
+// HF2 — Instantiate full exam skeleton from level template (HSK 1/2/3)
+router.post('/from-template', adminMiddleware, hskExamController.createExamFromTemplate);
+
 // Update exam
 router.put('/:id', adminMiddleware, hskExamController.updateExam);
 

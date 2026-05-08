@@ -8,46 +8,56 @@ const db = require('../config/database');
 /**
  * Get paginated vocabulary list with optional filters
  */
-async function getList({ hsk, q, page = 1, limit = 20 }) {
+async function getList({ hsk, q, theme, page = 1, limit = 20 }) {
     const offset = (page - 1) * limit;
 
-    let sql = `SELECT id, simplified, traditional, pinyin, han_viet, 
-                      meaning_vi, meaning_en, hsk_level, word_type, 
-                      audio_url, frequency_rank
-               FROM vocabulary WHERE 1=1`;
+    // theme filter requires JOIN; do it via subquery so frequency_rank ORDER still works
+    const themeJoin = theme
+        ? `JOIN vocabulary_theme_map vtm ON vtm.vocab_id = v.id
+           JOIN vocabulary_themes vt ON vt.id = vtm.theme_id AND vt.slug = ?`
+        : '';
+
+    let sql = `SELECT v.id, v.simplified, v.traditional, v.pinyin, v.han_viet,
+                      v.meaning_vi, v.meaning_en, v.hsk_level, v.word_type,
+                      v.audio_url, v.frequency_rank
+               FROM vocabulary v
+               ${themeJoin}
+               WHERE 1=1`;
     const params = [];
+    if (theme) params.push(theme);
 
     if (hsk) {
-        sql += ' AND hsk_level = ?';
+        sql += ' AND v.hsk_level = ?';
         params.push(parseInt(hsk));
     }
 
     if (q) {
-        sql += ` AND (simplified LIKE ? OR traditional LIKE ? 
-                 OR pinyin LIKE ? OR pinyin_no_tone LIKE ? 
-                 OR meaning_vi LIKE ? OR han_viet LIKE ?)`;
+        sql += ` AND (v.simplified LIKE ? OR v.traditional LIKE ?
+                 OR v.pinyin LIKE ? OR v.pinyin_no_tone LIKE ?
+                 OR v.meaning_vi LIKE ? OR v.han_viet LIKE ?)`;
         const searchTerm = `%${q}%`;
         params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
-    sql += ' ORDER BY frequency_rank ASC LIMIT ? OFFSET ?';
+    sql += ' ORDER BY v.frequency_rank ASC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), offset);
 
     const [rows] = await db.execute(sql, params);
 
-    // Get total count
-    let countSql = 'SELECT COUNT(*) as total FROM vocabulary WHERE 1=1';
+    // Get total count (mirror filter set)
+    let countSql = `SELECT COUNT(*) as total FROM vocabulary v ${themeJoin} WHERE 1=1`;
     const countParams = [];
+    if (theme) countParams.push(theme);
 
     if (hsk) {
-        countSql += ' AND hsk_level = ?';
+        countSql += ' AND v.hsk_level = ?';
         countParams.push(parseInt(hsk));
     }
 
     if (q) {
-        countSql += ` AND (simplified LIKE ? OR traditional LIKE ? 
-                     OR pinyin LIKE ? OR pinyin_no_tone LIKE ?
-                     OR meaning_vi LIKE ? OR han_viet LIKE ?)`;
+        countSql += ` AND (v.simplified LIKE ? OR v.traditional LIKE ?
+                     OR v.pinyin LIKE ? OR v.pinyin_no_tone LIKE ?
+                     OR v.meaning_vi LIKE ? OR v.han_viet LIKE ?)`;
         const searchTerm = `%${q}%`;
         countParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
@@ -58,6 +68,32 @@ async function getList({ hsk, q, page = 1, limit = 20 }) {
         rows,
         total: countResult[0].total
     };
+}
+
+/**
+ * List all canonical themes (15 rows, ordered by sort_order).
+ */
+async function listThemes() {
+    const [rows] = await db.execute(
+        `SELECT id, slug, name_vi, name_en, icon, color, sort_order
+         FROM vocabulary_themes ORDER BY sort_order ASC, id ASC`
+    );
+    return rows;
+}
+
+/**
+ * Get themes assigned to a single vocab (for detail page badge).
+ */
+async function getThemesForVocab(vocabId) {
+    const [rows] = await db.execute(
+        `SELECT vt.id, vt.slug, vt.name_vi, vt.icon, vt.color
+         FROM vocabulary_theme_map vtm
+         JOIN vocabulary_themes vt ON vt.id = vtm.theme_id
+         WHERE vtm.vocab_id = ?
+         ORDER BY vt.sort_order ASC`,
+        [vocabId]
+    );
+    return rows;
 }
 
 /**
@@ -185,5 +221,7 @@ module.exports = {
     getWithExamples,
     create,
     update,
-    deleteById
+    deleteById,
+    listThemes,
+    getThemesForVocab
 };

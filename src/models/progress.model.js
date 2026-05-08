@@ -1,46 +1,16 @@
 /**
- * Progress Model
- * Handles database operations for user vocabulary learning progress
+ * Progress Model — flashcard accuracy tracking (post-HF4 SRS removal).
  */
 
 const db = require('../config/database');
 
 /**
- * Get vocabulary due for review
- */
-async function getDueVocab(userId, { limit = 20, hsk }) {
-    const wordLimit = Math.min(parseInt(limit) || 20, 100);
-
-    let sql = `
-        SELECT 
-            v.id, v.simplified, v.traditional, v.pinyin, v.han_viet,
-            v.meaning_vi, v.meaning_en, v.hsk_level, v.audio_url,
-            p.mastery_level, p.ease_factor, p.interval_days, 
-            p.repetitions, p.next_review, p.times_seen, p.times_correct
-        FROM user_vocabulary_progress p
-        JOIN vocabulary v ON p.vocabulary_id = v.id
-        WHERE p.user_id = ? 
-          AND p.next_review <= NOW()
-    `;
-    const params = [userId];
-
-    if (hsk) {
-        sql += ' AND v.hsk_level = ?';
-        params.push(parseInt(hsk));
-    }
-
-    sql += ' ORDER BY p.next_review ASC, p.mastery_level ASC LIMIT ?';
-    params.push(wordLimit);
-
-    const [rows] = await db.execute(sql, params);
-    return rows;
-}
-
-/**
- * Get new vocabulary to learn
+ * Get new vocabulary the user has not started yet.
  */
 async function getNewVocab(userId, { limit = 10, hsk }) {
     const wordLimit = Math.min(parseInt(limit) || 10, 50);
+    const hskInt = Number.parseInt(hsk, 10);
+    const hskValid = Number.isFinite(hskInt) && hskInt >= 1 && hskInt <= 6;
 
     let sql = `
         SELECT v.id, v.simplified, v.traditional, v.pinyin, v.han_viet,
@@ -53,9 +23,9 @@ async function getNewVocab(userId, { limit = 10, hsk }) {
     `;
     const params = [userId];
 
-    if (hsk) {
+    if (hskValid) {
         sql += ' AND v.hsk_level = ?';
-        params.push(parseInt(hsk));
+        params.push(hskInt);
     }
 
     sql += ' ORDER BY v.frequency_rank ASC, v.hsk_level ASC LIMIT ?';
@@ -66,15 +36,13 @@ async function getNewVocab(userId, { limit = 10, hsk }) {
 }
 
 /**
- * Get user learning statistics
+ * User overall + breakdown stats. KHÔNG có `due_today` (SRS removed).
  */
 async function getStats(userId) {
-    // Get overall stats
     const [statsResult] = await db.execute(`
-        SELECT 
+        SELECT
             COUNT(*) as total_learned,
             SUM(CASE WHEN mastery_level >= 3 THEN 1 ELSE 0 END) as mastered,
-            SUM(CASE WHEN next_review <= NOW() THEN 1 ELSE 0 END) as due_today,
             AVG(mastery_level) as avg_mastery,
             SUM(times_seen) as total_reviews,
             SUM(times_correct) as total_correct
@@ -82,7 +50,6 @@ async function getStats(userId) {
         WHERE user_id = ?
     `, [userId]);
 
-    // Get mastery distribution
     const [masteryResult] = await db.execute(`
         SELECT mastery_level, COUNT(*) as count
         FROM user_vocabulary_progress
@@ -91,7 +58,6 @@ async function getStats(userId) {
         ORDER BY mastery_level
     `, [userId]);
 
-    // Get HSK level distribution
     const [hskResult] = await db.execute(`
         SELECT v.hsk_level, COUNT(*) as count
         FROM user_vocabulary_progress p
@@ -108,9 +74,6 @@ async function getStats(userId) {
     };
 }
 
-/**
- * Check if vocabulary exists
- */
 async function vocabExists(vocabId) {
     const [rows] = await db.execute(
         'SELECT id FROM vocabulary WHERE id = ?',
@@ -119,9 +82,6 @@ async function vocabExists(vocabId) {
     return rows.length > 0;
 }
 
-/**
- * Get current progress for a vocab
- */
 async function getProgress(userId, vocabId) {
     const [rows] = await db.execute(
         'SELECT * FROM user_vocabulary_progress WHERE user_id = ? AND vocabulary_id = ?',
@@ -130,9 +90,6 @@ async function getProgress(userId, vocabId) {
     return rows[0] || null;
 }
 
-/**
- * Get progress with vocab details
- */
 async function getProgressWithVocab(userId, vocabId) {
     const [rows] = await db.execute(`
         SELECT p.*, v.simplified, v.pinyin, v.meaning_vi
@@ -144,39 +101,28 @@ async function getProgressWithVocab(userId, vocabId) {
 }
 
 /**
- * Insert new progress record
+ * Insert first progress row. SRS columns (ease_factor / interval_days /
+ * repetitions / next_review) giữ default DB để tương thích schema cũ.
  */
-async function createProgress(userId, vocabId, newValues, isCorrect, responseMs) {
+async function createProgress(userId, vocabId, { masteryLevel, isCorrect, responseMs }) {
     await db.execute(`
-        INSERT INTO user_vocabulary_progress 
-        (user_id, vocabulary_id, mastery_level, ease_factor, interval_days, 
-         repetitions, next_review, times_seen, times_correct, times_wrong, 
-         avg_response_ms, last_reviewed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NOW())
+        INSERT INTO user_vocabulary_progress
+        (user_id, vocabulary_id, mastery_level, times_seen, times_correct,
+         times_wrong, avg_response_ms, last_reviewed)
+        VALUES (?, ?, ?, 1, ?, ?, ?, NOW())
     `, [
         userId, vocabId,
-        newValues.mastery_level,
-        newValues.ease_factor,
-        newValues.interval_days,
-        newValues.repetitions,
-        newValues.next_review,
+        masteryLevel,
         isCorrect ? 1 : 0,
         isCorrect ? 0 : 1,
-        responseMs || null
+        responseMs
     ]);
 }
 
-/**
- * Update existing progress
- */
-async function updateProgress(userId, vocabId, newValues, isCorrect, newAvgMs) {
+async function updateProgress(userId, vocabId, { masteryLevel, isCorrect, avgResponseMs }) {
     await db.execute(`
         UPDATE user_vocabulary_progress SET
             mastery_level = ?,
-            ease_factor = ?,
-            interval_days = ?,
-            repetitions = ?,
-            next_review = ?,
             times_seen = times_seen + 1,
             times_correct = times_correct + ?,
             times_wrong = times_wrong + ?,
@@ -184,20 +130,15 @@ async function updateProgress(userId, vocabId, newValues, isCorrect, newAvgMs) {
             last_reviewed = NOW()
         WHERE user_id = ? AND vocabulary_id = ?
     `, [
-        newValues.mastery_level,
-        newValues.ease_factor,
-        newValues.interval_days,
-        newValues.repetitions,
-        newValues.next_review,
+        masteryLevel,
         isCorrect ? 1 : 0,
         isCorrect ? 0 : 1,
-        newAvgMs,
+        avgResponseMs,
         userId, vocabId
     ]);
 }
 
 module.exports = {
-    getDueVocab,
     getNewVocab,
     getStats,
     vocabExists,

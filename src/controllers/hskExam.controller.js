@@ -5,6 +5,7 @@
 
 const HskExamModel = require('../models/hskExam.model');
 const streakService = require('../services/streak.service');
+const examTemplate = require('../services/hsk-exam-template.service');
 
 // ============================================================
 // ADMIN - EXAM MANAGEMENT
@@ -46,6 +47,39 @@ async function createExam(req, res) {
     } catch (err) {
         console.error('Create exam error:', err);
         res.status(500).json({ success: false, message: 'Failed to create exam', error: err.message });
+    }
+}
+
+/**
+ * POST /api/hsk-exams/from-template
+ * Body: { level: 1|2|3, title?, exam_type?, description? }
+ * → atomic instantiate full exam skeleton (sections + groups + N placeholder questions).
+ */
+async function createExamFromTemplate(req, res) {
+    try {
+        const level = parseInt(req.body?.level, 10);
+        if (![1, 2, 3].includes(level)) {
+            return res.status(400).json({
+                success: false,
+                message: `HSK ${level || '?'} chưa có template. Chỉ hỗ trợ HSK 1/2/3.`
+            });
+        }
+
+        const { examId, totalQuestions } = await examTemplate.instantiateTemplate(level, {
+            title: req.body?.title,
+            exam_type: req.body?.exam_type,
+            description: req.body?.description,
+        });
+
+        const exam = await HskExamModel.getExamById(examId, true);
+        res.status(201).json({ success: true, data: exam, totalQuestions });
+    } catch (err) {
+        console.error('Create exam from template error:', err);
+        const status = err.code === 'UNSUPPORTED_LEVEL' ? 400 : 500;
+        res.status(status).json({
+            success: false,
+            message: err.message || 'Failed to instantiate template',
+        });
     }
 }
 
@@ -515,6 +549,7 @@ module.exports = {
     listExams,
     getExamDetail,
     createExam,
+    createExamFromTemplate,
     updateExam,
     deleteExam,
     createSection,

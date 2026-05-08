@@ -39,11 +39,12 @@ function formatVocab(row, includeExamples = false) {
  */
 async function list(req, res) {
     try {
-        const { hsk, q, page = 1, limit = 20 } = req.query;
+        const { hsk, q, theme, page = 1, limit = 20 } = req.query;
 
         const { rows, total } = await VocabModel.getList({
             hsk,
             q,
+            theme: theme && String(theme).trim() ? String(theme).trim() : undefined,
             page: parseInt(page),
             limit: parseInt(limit)
         });
@@ -74,10 +75,32 @@ async function getById(req, res) {
             return res.status(404).json({ error: 'Vocabulary not found' });
         }
 
-        res.json(formatVocab(vocab, true));
+        const formatted = formatVocab(vocab, true);
+        // Attach themes (graceful fallback nếu bảng chưa migrate)
+        try {
+            formatted.themes = await VocabModel.getThemesForVocab(vocab.id);
+        } catch {
+            formatted.themes = [];
+        }
+
+        res.json(formatted);
     } catch (err) {
         console.error('Get vocab by id error:', err);
         res.status(500).json({ error: 'Failed to get vocabulary' });
+    }
+}
+
+/**
+ * GET /api/vocab/themes — list all canonical themes
+ */
+async function listThemes(req, res) {
+    try {
+        const themes = await VocabModel.listThemes();
+        res.json({ data: themes });
+    } catch (err) {
+        // Bảng chưa migrate → return empty list (FE sẽ ẩn pill row)
+        console.error('List themes error:', err.message);
+        res.json({ data: [] });
     }
 }
 
@@ -213,5 +236,6 @@ module.exports = {
     getExamples,
     create,
     update,
-    deleteVocab
+    deleteVocab,
+    listThemes
 };

@@ -1,49 +1,28 @@
 /**
  * Progress Controller
- * Handles HTTP request/response for user vocabulary learning progress
+ * Tracks per-user vocabulary progress (times_seen / correct / wrong).
+ *
+ * SRS đã bị bỏ hoàn toàn (HF4.1). `submitReview` chỉ ghi nhận lượt đúng/sai
+ * cho flashcard session — KHÔNG còn lên lịch ôn tập theo SM-2.
  */
 
 const ProgressModel = require('../models/progress.model');
-const srs = require('../services/srs');
 const streakService = require('../services/streak.service');
 
 /**
- * GET /api/progress/due
+ * Compute mastery_level (0–5) từ accuracy + total reviews. Đơn giản hoá thay
+ * cho SM-2: càng nhiều lần đúng liên tiếp + accuracy cao thì mastery cao.
  */
-async function getDue(req, res) {
-    try {
-        const userId = req.user.userId;
-        const { limit = 20, hsk } = req.query;
-
-        const rows = await ProgressModel.getDueVocab(userId, { limit, hsk });
-
-        res.json({
-            count: rows.length,
-            data: rows.map(row => ({
-                id: row.id,
-                simplified: row.simplified,
-                traditional: row.traditional,
-                pinyin: row.pinyin,
-                hanViet: row.han_viet,
-                meaningVi: row.meaning_vi,
-                meaningEn: row.meaning_en,
-                hskLevel: row.hsk_level,
-                audioUrl: row.audio_url,
-                progress: {
-                    masteryLevel: row.mastery_level,
-                    easeFactor: parseFloat(row.ease_factor),
-                    intervalDays: row.interval_days,
-                    repetitions: row.repetitions,
-                    nextReview: row.next_review,
-                    timesSeen: row.times_seen,
-                    timesCorrect: row.times_correct
-                }
-            }))
-        });
-    } catch (err) {
-        console.error('Get due vocabulary error:', err);
-        res.status(500).json({ error: 'Failed to get due vocabulary' });
-    }
+function deriveMastery(timesSeen, timesCorrect) {
+    if (timesSeen === 0) return 0;
+    const acc = timesCorrect / timesSeen;
+    if (timesSeen < 2) return 1;
+    if (acc < 0.5) return 1;
+    if (acc < 0.7) return 2;
+    if (timesSeen < 5) return 3;
+    if (acc < 0.85) return 3;
+    if (timesSeen < 10) return 4;
+    return 5;
 }
 
 /**
@@ -77,7 +56,7 @@ async function getNew(req, res) {
 }
 
 /**
- * GET /api/progress/stats
+ * GET /api/progress/stats — KHÔNG còn `dueToday` (SRS removed).
  */
 async function getStats(req, res) {
     try {
@@ -91,7 +70,6 @@ async function getStats(req, res) {
         res.json({
             totalLearned: overall.total_learned || 0,
             mastered: overall.mastered || 0,
-            dueToday: overall.due_today || 0,
             avgMastery: Math.round((overall.avg_mastery || 0) * 10) / 10,
             totalReviews: overall.total_reviews || 0,
             accuracy: accuracy,
@@ -111,71 +89,70 @@ async function getStats(req, res) {
 }
 
 /**
- * POST /api/progress/review
+ * POST /api/progress/review — flashcard ghi nhận đúng/sai (no SRS).
+ *
+ * Body: { vocabId, quality (0–5), responseMs? }
+ *   quality ≥ 3 → đếm là đúng; <3 → sai. (Giữ format quality 0–5 để tương
+ *   thích FE flashcard cũ; sau này có thể đổi sang { correct: bool }.)
  */
 async function submitReview(req, res) {
     try {
         const userId = req.user.userId;
         const { vocabId, quality, responseMs } = req.body;
 
-        // Validate input
         if (!vocabId || quality === undefined) {
             return res.status(400).json({ error: 'vocabId and quality are required' });
         }
-
         if (quality < 0 || quality > 5) {
             return res.status(400).json({ error: 'Quality must be between 0 and 5' });
         }
 
-        // Check if vocabulary exists
         const exists = await ProgressModel.vocabExists(vocabId);
         if (!exists) {
             return res.status(404).json({ error: 'Vocabulary not found' });
         }
 
-        // Get current progress (if exists)
-        const currentProgress = await ProgressModel.getProgress(userId, vocabId);
-
-        // Calculate new SRS values
-        const newValues = srs.calculateNextReview(quality, currentProgress);
         const isCorrect = quality >= 3;
+        const current = await ProgressModel.getProgress(userId, vocabId);
 
-        if (!currentProgress) {
-            // Insert new progress record
-            await ProgressModel.createProgress(userId, vocabId, newValues, isCorrect, responseMs);
+        if (!current) {
+            const mastery = deriveMastery(1, isCorrect ? 1 : 0);
+            await ProgressModel.createProgress(userId, vocabId, {
+                masteryLevel: mastery,
+                isCorrect,
+                responseMs: responseMs || null
+            });
         } else {
-            // Update existing progress
-            const newAvgMs = responseMs && currentProgress.avg_response_ms
-                ? Math.round((currentProgress.avg_response_ms + responseMs) / 2)
-                : responseMs || currentProgress.avg_response_ms;
+            const newSeen = (current.times_seen || 0) + 1;
+            const newCorrect = (current.times_correct || 0) + (isCorrect ? 1 : 0);
+            const newAvgMs = responseMs && current.avg_response_ms
+                ? Math.round((current.avg_response_ms + responseMs) / 2)
+                : (responseMs || current.avg_response_ms);
 
-            await ProgressModel.updateProgress(userId, vocabId, newValues, isCorrect, newAvgMs);
+            await ProgressModel.updateProgress(userId, vocabId, {
+                masteryLevel: deriveMastery(newSeen, newCorrect),
+                isCorrect,
+                avgResponseMs: newAvgMs
+            });
         }
 
-        // Update streak and XP after successful review
+        // Streak + XP (best-effort). Trả về xpEarned để FE không phải tự
+        // tính lại (tránh drift giữa display và BE — bug HF4 review #2).
+        let xpEarned = 0;
         try {
             await streakService.updateStreak(userId);
-            const xp = streakService.calculateXP(quality);
-            if (xp > 0) {
-                await streakService.addXP(userId, xp);
-            }
+            xpEarned = isCorrect ? streakService.calculateXP(quality) : 0;
+            if (xpEarned > 0) await streakService.addXP(userId, xpEarned);
         } catch (streakErr) {
-            // Log but don't fail the review
             console.error('Streak/XP update error:', streakErr);
         }
 
         res.json({
             success: true,
-            vocabId: vocabId,
-            quality: quality,
-            qualityDescription: srs.getQualityDescription(quality),
-            newProgress: {
-                masteryLevel: newValues.mastery_level,
-                easeFactor: newValues.ease_factor,
-                intervalDays: newValues.interval_days,
-                repetitions: newValues.repetitions,
-                nextReview: newValues.next_review
-            }
+            vocabId,
+            quality,
+            correct: isCorrect,
+            xpEarned,
         });
     } catch (err) {
         console.error('Submit review error:', err);
@@ -205,10 +182,6 @@ async function getProgressById(req, res) {
             meaningVi: row.meaning_vi,
             progress: {
                 masteryLevel: row.mastery_level,
-                easeFactor: parseFloat(row.ease_factor),
-                intervalDays: row.interval_days,
-                repetitions: row.repetitions,
-                nextReview: row.next_review,
                 lastReviewed: row.last_reviewed,
                 timesSeen: row.times_seen,
                 timesCorrect: row.times_correct,
@@ -223,7 +196,6 @@ async function getProgressById(req, res) {
 }
 
 module.exports = {
-    getDue,
     getNew,
     getStats,
     submitReview,
