@@ -106,6 +106,8 @@ async function getMatchPairs(req, res) {
         const hskInt = normalizeHsk(req.query.hsk);
         const limit = Math.min(parseInt(req.query.limit, 10) || 8, 16);
 
+        // Pull 4x oversample rồi dedup theo meaning_vi VÀ simplified để tránh
+        // ambiguous matches (vd nhiều vocab có cùng nghĩa "to/lớn" sẽ rối UI).
         let sql = `
             SELECT id, simplified, pinyin, meaning_vi
             FROM vocabulary
@@ -118,14 +120,52 @@ async function getMatchPairs(req, res) {
             params.push(hskInt);
         }
         sql += ' ORDER BY RAND() LIMIT ?';
-        params.push(limit);
+        params.push(limit * 4);
 
-        const [rows] = await db.execute(sql, params);
+        const [rawRows] = await db.execute(sql, params);
+
+        // Dedup: chuẩn hoá meaning_vi (lowercase, trim, lấy nghĩa đầu tiên trước
+        // dấu phẩy/chấm phẩy) để tránh "to lớn" và "lớn, rộng" coi là khác nhau.
+        const norm = (s) => String(s || '')
+            .toLowerCase()
+            .split(/[;,\/|()\[\]:]/)[0]
+            .trim();
+
+        const seenMeaning = new Set();
+        const seenSimplified = new Set();
+        const dedup = [];
+        for (const r of rawRows) {
+            const m = norm(r.meaning_vi);
+            if (!m) continue;
+            if (seenMeaning.has(m) || seenSimplified.has(r.simplified)) continue;
+            seenMeaning.add(m);
+            seenSimplified.add(r.simplified);
+            dedup.push(r);
+            if (dedup.length >= limit) break;
+        }
+
+        // Nếu dedup không đủ (db quá ít), fallback bằng raw rows giữ thứ tự nhưng
+        // chỉ cấm trùng simplified (gameplay vẫn chạy được)
+        if (dedup.length < Math.min(2, limit)) {
+            const fallback = [];
+            const seenS = new Set();
+            for (const r of rawRows) {
+                if (seenS.has(r.simplified)) continue;
+                seenS.add(r.simplified);
+                fallback.push(r);
+                if (fallback.length >= limit) break;
+            }
+            if (fallback.length >= 2) dedup.splice(0, dedup.length, ...fallback);
+        }
+
+        if (dedup.length < 2) {
+            return res.json({ success: true, token: '', pairs: [] });
+        }
 
         const token = genSessionToken();
         matchSessions.set(token, {
             userId: req.user.userId,
-            pairIds: new Set(rows.map(r => r.id)),
+            pairIds: new Set(dedup.map(r => r.id)),
             cleared: new Set(),
             expiresAt: Date.now() + SESSION_TTL_MS,
         });
@@ -133,7 +173,7 @@ async function getMatchPairs(req, res) {
         return res.json({
             success: true,
             token,
-            pairs: rows.map(r => ({
+            pairs: dedup.map(r => ({
                 id: r.id,
                 simplified: r.simplified,
                 pinyin: r.pinyin,
