@@ -308,11 +308,16 @@ async function translatePrompt(req, res) {
                 // expected_zh / expected_pinyin chỉ trả về SAU khi grade.
             }
         });
-    } catch (err) {
-        console.error(`[${requestId}] translatePrompt FAIL after ${Date.now() - startedAt}ms:`, err.message);
-        return res.status(err.status || 500).json({
+    } catch (error) {
+        console.error(`[${requestId}] translatePrompt error:`, {
+            message: error.message,
+            status: error.status,
+            stack: error.stack,
+        });
+        const httpStatus = [429, 502, 503, 504].includes(error.status) ? error.status : 500;
+        return res.status(httpStatus).json({
             success: false,
-            message: err.publicMessage || 'Lỗi tạo câu dịch.'
+            message: error.publicMessage || 'Lỗi tạo câu dịch. Vui lòng thử lại.'
         });
     }
 }
@@ -412,11 +417,16 @@ async function translateGrade(req, res) {
                 xpEarned: xp,
             }
         });
-    } catch (err) {
-        console.error(`[${requestId}] translateGrade error:`, err.message);
-        return res.status(err.status || 500).json({
+    } catch (error) {
+        console.error(`[${requestId}] translateGrade error:`, {
+            message: error.message,
+            status: error.status,
+            stack: error.stack,
+        });
+        const httpStatus = [429, 502, 503, 504].includes(error.status) ? error.status : 500;
+        return res.status(httpStatus).json({
             success: false,
-            message: err.publicMessage || 'Lỗi chấm bài dịch.'
+            message: error.publicMessage || 'Lỗi chấm bài dịch. Vui lòng thử lại.'
         });
     }
 }
