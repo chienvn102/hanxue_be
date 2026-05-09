@@ -281,7 +281,11 @@ async function translatePrompt(req, res) {
         }
 
         // Đếm vào cùng quota AI/ngày như /api/chat/send (best-effort).
-        try { await ChatModel.incrementDailyAiChat(req.user.userId); } catch {}
+        try {
+            await ChatModel.incrementDailyAiChat(req.user.userId);
+        } catch (dbErr) {
+            console.error(`[${requestId}] incrementDailyAiChat error:`, dbErr.message);
+        }
 
         const vi = String(parsed.vi).trim();
         const expectedZh = String(parsed.expected_zh).trim();
