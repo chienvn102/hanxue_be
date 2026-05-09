@@ -246,6 +246,8 @@ async function clearMatchPair(req, res) {
 // =====================================================================
 async function translatePrompt(req, res) {
     const requestId = genRequestId('translate-prompt');
+    const startedAt = Date.now();
+    console.log(`[${requestId}] translatePrompt START userId=${req.user?.userId} hsk=${req.body?.hsk}`);
     try {
         purgeExpired(translateSessions);
 
@@ -296,6 +298,7 @@ async function translatePrompt(req, res) {
             expiresAt: Date.now() + SESSION_TTL_MS,
         });
 
+        console.log(`[${requestId}] translatePrompt OK in ${Date.now() - startedAt}ms`);
         return res.json({
             success: true,
             data: {
@@ -306,7 +309,7 @@ async function translatePrompt(req, res) {
             }
         });
     } catch (err) {
-        console.error(`[${requestId}] translatePrompt error:`, err.message);
+        console.error(`[${requestId}] translatePrompt FAIL after ${Date.now() - startedAt}ms:`, err.message);
         return res.status(err.status || 500).json({
             success: false,
             message: err.publicMessage || 'Lỗi tạo câu dịch.'
