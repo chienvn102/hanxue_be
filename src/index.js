@@ -32,10 +32,11 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Rate limiting
+// Rate limiting — tắt ngầm cho test project (limit cao gần như vô hạn).
+// Bật lại bằng cách set RATE_LIMIT_MAX=100 trong .env nếu cần.
 const limiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
-    max: parseInt(process.env.RATE_LIMIT_MAX) || 100
+    max: parseInt(process.env.RATE_LIMIT_MAX) || 100000
 });
 app.use(limiter);
 
