@@ -3,7 +3,10 @@
  * DB-based rate limiting for AI chat endpoints
  * Uses daily_activity.ai_chats column with uk_user_date unique key
  *
- * Limits: Free = 20/day, Premium = 500/day
+ * Limits: Free = 200/day, Premium = 2000/day (test project — thoải mái)
+ *
+ * Fail-open: Nếu DB check lỗi → log + cho request đi tiếp (tránh chặn user
+ * vì lỗi tạm thời ở model). Acceptable cho project test.
  */
 
 const ChatModel = require('../models/chat.model');
@@ -17,7 +20,7 @@ async function aiRateLimit(req, res, next) {
             ChatModel.getDailyAiChatCount(userId)
         ]);
 
-        const limit = userInfo.isPremium ? 500 : 20;
+        const limit = userInfo.isPremium ? 2000 : 200;
         const remaining = Math.max(0, limit - chatCount);
 
         // Set header for FE
@@ -36,11 +39,11 @@ async function aiRateLimit(req, res, next) {
 
         next();
     } catch (error) {
-        console.error('AI rate limit error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Loi he thong khi kiem tra gioi han. Vui long thu lai.'
-        });
+        // Fail-open: log nhưng không chặn request. Khi DB tạm lỗi không nên
+        // làm user chết tính năng — tệ nhất là 1 request "chui" qua rate limit.
+        console.error('[aiRateLimit] DB check failed, allowing request through:', error.message);
+        req.aiRateInfo = { chatCount: 0, limit: 200, isPremium: false, _failOpen: true };
+        next();
     }
 }
 

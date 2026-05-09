@@ -10,10 +10,10 @@
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-const GROQ_TIMEOUT_MS = 15000; // 15 second timeout
+const GROQ_TIMEOUT_MS = 60000; // 60s — llama-3.3-70b thường mất 10-25s, peak có thể 30-45s
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-const MAX_RETRIES = 1;
-const RETRY_DELAY_MS = 1000;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000; // base delay; thực tế dùng exponential backoff: 1s, 2s, 4s
 
 /** Network-level errors that are safe to retry */
 const RETRYABLE_NETWORK_CODES = new Set([
@@ -148,8 +148,9 @@ async function sendMessage(messages, requestId) {
             const isRetryable = err.retryable || isNetworkError(err);
 
             if (isRetryable && !isLastAttempt) {
-                console.warn(`${logPrefix} Groq attempt #${attempt} failed (${err.message}), retrying in ${RETRY_DELAY_MS}ms...`);
-                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                const backoff = RETRY_DELAY_MS * Math.pow(2, attempt); // 1s, 2s, 4s
+                console.warn(`${logPrefix} Groq attempt #${attempt + 1} failed (${err.message}), retrying in ${backoff}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoff));
                 continue;
             }
 
