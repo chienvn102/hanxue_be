@@ -108,6 +108,22 @@ async function getById(id) {
 }
 
 /**
+ * Tìm vocab theo simplified (sau khi trim). Dùng để pre-check duplicate
+ * trước khi INSERT/UPDATE. Trả về row hoặc null.
+ *   excludeId: bỏ qua bản ghi này (cho update — không tự coi mình là dup).
+ */
+async function findBySimplified(simplified, excludeId = null) {
+    const trimmed = String(simplified || '').trim();
+    if (!trimmed) return null;
+    const sql = excludeId
+        ? 'SELECT id, simplified, pinyin, hsk_level FROM vocabulary WHERE simplified = ? AND id <> ? LIMIT 1'
+        : 'SELECT id, simplified, pinyin, hsk_level FROM vocabulary WHERE simplified = ? LIMIT 1';
+    const params = excludeId ? [trimmed, excludeId] : [trimmed];
+    const [rows] = await db.execute(sql, params);
+    return rows[0] || null;
+}
+
+/**
  * Fulltext search vocabulary
  */
 async function searchFulltext(query) {
@@ -144,13 +160,15 @@ async function create(data) {
         word_type, audio_url, frequency_rank, examples
     } = data;
 
+    const trimmedSimplified = String(simplified || '').trim();
+
     const [result] = await db.execute(
-        `INSERT INTO vocabulary 
+        `INSERT INTO vocabulary
         (simplified, traditional, pinyin, pinyin_no_tone, han_viet, meaning_vi, meaning_en, hsk_level, word_type, audio_url, frequency_rank, examples)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            simplified,
-            traditional || null,
+            trimmedSimplified,
+            traditional ? String(traditional).trim() : null,
             pinyin,
             pinyin_no_tone || pinyin?.replace(/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/g, c =>
                 'āáǎà'.includes(c) ? 'a' : 'ēéěè'.includes(c) ? 'e' : 'īíǐì'.includes(c) ? 'i' :
@@ -163,7 +181,7 @@ async function create(data) {
             word_type || null,
             audio_url || null,
             frequency_rank || 99999,
-            examples ? JSON.stringify(examples) : null
+            examples && Array.isArray(examples) && examples.length > 0 ? JSON.stringify(examples) : null
         ]
     );
     return result.insertId;
@@ -217,6 +235,7 @@ async function deleteById(id) {
 module.exports = {
     getList,
     getById,
+    findBySimplified,
     searchFulltext,
     getWithExamples,
     create,

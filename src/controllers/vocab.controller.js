@@ -183,14 +183,60 @@ async function getExamples(req, res) {
 }
 
 /**
+ * Validate input cho create/update — return null nếu OK, message nếu lỗi.
+ * Yêu cầu tối thiểu: simplified + pinyin + meaning_vi (sau khi trim).
+ */
+function validateVocabPayload(body, { partial = false } = {}) {
+    const required = ['simplified', 'pinyin', 'meaning_vi'];
+    for (const field of required) {
+        if (partial && body[field] === undefined) continue; // PUT cho phép thiếu field
+        const v = body[field];
+        if (typeof v !== 'string' || !v.trim()) {
+            return `Trường "${field}" là bắt buộc và không được để trống.`;
+        }
+    }
+    if (body.hsk_level !== undefined) {
+        const lvl = parseInt(body.hsk_level, 10);
+        if (!Number.isFinite(lvl) || lvl < 1 || lvl > 6) {
+            return `hsk_level phải là số 1-6.`;
+        }
+    }
+    return null;
+}
+
+/**
  * POST /api/vocab (Admin)
  */
 async function create(req, res) {
     try {
+        const validationErr = validateVocabPayload(req.body);
+        if (validationErr) {
+            return res.status(400).json({ success: false, message: validationErr });
+        }
+
+        // Pre-check trùng simplified — UX rõ hơn dựa-vào-DB-throw.
+        const existing = await VocabModel.findBySimplified(req.body.simplified);
+        if (existing) {
+            return res.status(409).json({
+                success: false,
+                code: 'DUPLICATE_SIMPLIFIED',
+                message: `Chữ Hán "${existing.simplified}" đã tồn tại (id ${existing.id}, HSK ${existing.hsk_level}, pinyin: ${existing.pinyin}).`,
+                data: { existingId: existing.id, simplified: existing.simplified }
+            });
+        }
+
         const id = await VocabModel.create(req.body);
         const vocab = await VocabModel.getById(id);
         res.status(201).json({ success: true, data: formatVocab(vocab, true) });
     } catch (err) {
+        // Race condition: 2 admin insert cùng lúc → DB unique throw.
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({
+                success: false,
+                code: 'DUPLICATE_SIMPLIFIED',
+                message: 'Chữ Hán này vừa được người khác thêm. Refresh lại danh sách nhé.'
+            });
+        }
         console.error('Create vocab error:', err);
         res.status(500).json({ success: false, message: 'Failed to create vocabulary', error: err.message });
     }
@@ -201,13 +247,43 @@ async function create(req, res) {
  */
 async function update(req, res) {
     try {
+        const validationErr = validateVocabPayload(req.body, { partial: true });
+        if (validationErr) {
+            return res.status(400).json({ success: false, message: validationErr });
+        }
+
+        // Nếu update làm đổi simplified → check không trùng vocab khác.
+        if (typeof req.body.simplified === 'string' && req.body.simplified.trim()) {
+            const conflict = await VocabModel.findBySimplified(req.body.simplified, req.params.id);
+            if (conflict) {
+                return res.status(409).json({
+                    success: false,
+                    code: 'DUPLICATE_SIMPLIFIED',
+                    message: `Chữ Hán "${conflict.simplified}" đã tồn tại ở từ vựng khác (id ${conflict.id}).`,
+                    data: { existingId: conflict.id }
+                });
+            }
+        }
+
         const affected = await VocabModel.update(req.params.id, req.body);
         if (affected === 0) {
-            return res.status(404).json({ success: false, message: 'Vocabulary not found or no changes made' });
+            // Không có thay đổi cũng coi là OK — trả lại entity hiện tại.
+            const vocab = await VocabModel.getById(req.params.id);
+            if (!vocab) {
+                return res.status(404).json({ success: false, message: 'Vocabulary not found' });
+            }
+            return res.json({ success: true, data: formatVocab(vocab, true), info: 'No changes' });
         }
         const vocab = await VocabModel.getById(req.params.id);
         res.json({ success: true, data: formatVocab(vocab, true) });
     } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({
+                success: false,
+                code: 'DUPLICATE_SIMPLIFIED',
+                message: 'Chữ Hán bị trùng với từ vựng khác.'
+            });
+        }
         console.error('Update vocab error:', err);
         res.status(500).json({ success: false, message: 'Failed to update vocabulary', error: err.message });
     }
