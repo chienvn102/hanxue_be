@@ -10,7 +10,9 @@ const db = require('../config/database');
  */
 async function findByEmail(email) {
     const [rows] = await db.execute(
-        'SELECT id, email, password_hash, display_name, role, is_active, google_id, avatar_url FROM users WHERE email = ?',
+        `SELECT id, email, password_hash, display_name, role, is_active, google_id,
+                avatar_url, target_hsk, is_premium, email_verified
+         FROM users WHERE email = ?`,
         [email]
     );
     return rows[0] || null;
@@ -21,8 +23,23 @@ async function findByEmail(email) {
  */
 async function findByEmailForLogin(email) {
     const [rows] = await db.execute(
-        'SELECT id, email, password_hash, display_name, role, is_active, target_hsk, is_premium FROM users WHERE email = ?',
+        `SELECT id, email, password_hash, display_name, role, is_active,
+                target_hsk, is_premium
+         FROM users WHERE email = ?`,
         [email]
+    );
+    return rows[0] || null;
+}
+
+/**
+ * Find user by ID with fields needed for auth responses
+ */
+async function findByIdForAuth(id) {
+    const [rows] = await db.execute(
+        `SELECT id, email, display_name, role, is_active, target_hsk,
+                is_premium, google_id, avatar_url, email_verified
+         FROM users WHERE id = ?`,
+        [id]
     );
     return rows[0] || null;
 }
@@ -55,11 +72,28 @@ async function findByIdForRefresh(id) {
 /**
  * Create new user
  */
-async function create({ email, passwordHash, displayName, googleId = null }) {
+async function create({
+    email,
+    passwordHash,
+    displayName,
+    googleId = null,
+    avatarUrl = null,
+    emailVerified = false
+}) {
     const [result] = await db.execute(
-        `INSERT INTO users (email, password_hash, display_name, google_id, created_at) 
-         VALUES (?, ?, ?, ?, NOW())`,
-        [email, passwordHash, displayName || email.split('@')[0], googleId]
+        `INSERT INTO users (
+            email, password_hash, display_name, google_id, avatar_url,
+            email_verified, created_at
+        )
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [
+            email,
+            passwordHash,
+            displayName || email.split('@')[0],
+            googleId,
+            avatarUrl,
+            emailVerified ? 1 : 0
+        ]
     );
     return result.insertId;
 }
@@ -75,14 +109,54 @@ async function updateRefreshToken(userId, refreshTokenHash) {
 }
 
 /**
+ * Clear refresh token hash for a user
+ */
+async function clearRefreshToken(userId) {
+    await db.execute(
+        'UPDATE users SET refresh_token_hash = NULL WHERE id = ?',
+        [userId]
+    );
+}
+
+/**
  * Find user by Google ID
  */
 async function findByGoogleId(googleId) {
     const [rows] = await db.execute(
-        'SELECT id, email, display_name, avatar_url, role, is_active FROM users WHERE google_id = ?',
+        `SELECT id, email, display_name, avatar_url, role, is_active,
+                target_hsk, is_premium, google_id, email_verified
+         FROM users WHERE google_id = ?`,
         [googleId]
     );
     return rows[0] || null;
+}
+
+/**
+ * Link an existing user to a verified Google account
+ */
+async function linkGoogleAccount(userId, { googleId, avatarUrl, displayName, emailVerified = true }) {
+    const params = [googleId];
+    let sql = 'UPDATE users SET google_id = ?';
+
+    if (avatarUrl) {
+        sql += ', avatar_url = ?';
+        params.push(avatarUrl);
+    }
+
+    if (displayName) {
+        sql += ', display_name = COALESCE(NULLIF(display_name, \'\'), ?)';
+        params.push(displayName);
+    }
+
+    if (emailVerified) {
+        sql += ', email_verified = 1';
+    }
+
+    sql += ' WHERE id = ?';
+    params.push(userId);
+
+    const [result] = await db.execute(sql, params);
+    return result.affectedRows > 0;
 }
 
 /**
@@ -140,11 +214,14 @@ async function updatePassword(userId, newHash) {
 module.exports = {
     findByEmail,
     findByEmailForLogin,
+    findByIdForAuth,
     findById,
     findByIdForRefresh,
     create,
     updateRefreshToken,
+    clearRefreshToken,
     findByGoogleId,
+    linkGoogleAccount,
     updateProfile,
     findByIdWithPassword,
     updatePassword

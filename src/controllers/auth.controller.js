@@ -4,15 +4,118 @@
  */
 
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const UserModel = require('../models/user.model');
+const PasswordResetCodeModel = require('../models/passwordResetCode.model');
+const { sendPasswordResetCode } = require('../services/email.service');
+
+const googleClient = new OAuth2Client();
+const PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
+const MAX_PASSWORD_RESET_ATTEMPTS = 5;
+const GENERIC_RESET_MESSAGE = 'If an account exists, a reset code has been sent.';
+
+function normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+}
+
+function createHttpError(statusCode, message) {
+    const err = new Error(message);
+    err.statusCode = statusCode;
+    return err;
+}
+
+function createAccessToken(user) {
+    return jwt.sign(
+        { userId: user.id, email: user.email, role: user.role || 'user' },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
+    );
+}
+
+function createRefreshToken(user) {
+    return jwt.sign(
+        { userId: user.id },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
+    );
+}
+
+function toAuthUser(user) {
+    return {
+        id: user.id,
+        email: user.email,
+        displayName: user.display_name,
+        role: user.role,
+        targetHsk: user.target_hsk,
+        isPremium: !!user.is_premium
+    };
+}
+
+async function issueAuthResponse(user) {
+    const accessToken = createAccessToken(user);
+    const refreshToken = createRefreshToken(user);
+    const refreshHash = await bcrypt.hash(refreshToken, 10);
+
+    await UserModel.updateRefreshToken(user.id, refreshHash);
+
+    return {
+        accessToken,
+        refreshToken,
+        user: toAuthUser(user)
+    };
+}
+
+async function verifyGoogleCredential(credential) {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+
+    if (!clientId) {
+        throw createHttpError(500, 'Google login is not configured');
+    }
+
+    if (!credential || typeof credential !== 'string') {
+        throw createHttpError(400, 'Google credential required');
+    }
+
+    let ticket;
+    try {
+        ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: clientId
+        });
+    } catch (err) {
+        throw createHttpError(401, 'Invalid Google credential');
+    }
+    const payload = ticket.getPayload();
+
+    if (!payload || !payload.sub || !payload.email) {
+        throw createHttpError(401, 'Invalid Google credential');
+    }
+
+    if (!payload.email_verified) {
+        throw createHttpError(403, 'Google email is not verified');
+    }
+
+    return {
+        googleId: payload.sub,
+        email: normalizeEmail(payload.email),
+        displayName: payload.name || payload.email.split('@')[0],
+        avatarUrl: payload.picture || null
+    };
+}
+
+function generateResetCode() {
+    return crypto.randomInt(100000, 1000000).toString();
+}
 
 /**
  * POST /api/auth/register
  */
 async function register(req, res) {
     try {
-        const { email, password, displayName } = req.body;
+        const { password, displayName } = req.body;
+        const email = normalizeEmail(req.body.email);
 
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password required' });
@@ -45,7 +148,8 @@ async function register(req, res) {
  */
 async function login(req, res) {
     try {
-        const { email, password } = req.body;
+        const { password } = req.body;
+        const email = normalizeEmail(req.body.email);
 
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password required' });
@@ -68,38 +172,155 @@ async function login(req, res) {
             return res.status(403).json({ error: 'Account is disabled. Please contact support.' });
         }
 
-        // Generate tokens
-        const accessToken = jwt.sign(
-            { userId: user.id, email: user.email, role: user.role || 'user' },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
-        );
-
-        const refreshToken = jwt.sign(
-            { userId: user.id },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
-        );
-
-        // Store refresh token hash
-        const refreshHash = await bcrypt.hash(refreshToken, 10);
-        await UserModel.updateRefreshToken(user.id, refreshHash);
-
-        res.json({
-            accessToken,
-            refreshToken,
-            user: {
-                id: user.id,
-                email: user.email,
-                displayName: user.display_name,
-                role: user.role,
-                targetHsk: user.target_hsk,
-                isPremium: !!user.is_premium
-            }
-        });
+        res.json(await issueAuthResponse(user));
     } catch (err) {
         console.error('Login error:', err);
         res.status(500).json({ error: 'Login failed' });
+    }
+}
+
+/**
+ * POST /api/auth/google
+ */
+async function googleLogin(req, res) {
+    try {
+        const googleUser = await verifyGoogleCredential(req.body.credential);
+        let user = await UserModel.findByGoogleId(googleUser.googleId);
+
+        if (!user) {
+            const existing = await UserModel.findByEmail(googleUser.email);
+
+            if (existing) {
+                if (!existing.is_active) {
+                    return res.status(403).json({ error: 'Account is disabled. Please contact support.' });
+                }
+
+                if (existing.google_id && existing.google_id !== googleUser.googleId) {
+                    return res.status(409).json({ error: 'Email is already linked to another Google account' });
+                }
+
+                if (!existing.google_id) {
+                    await UserModel.linkGoogleAccount(existing.id, {
+                        googleId: googleUser.googleId,
+                        avatarUrl: googleUser.avatarUrl,
+                        displayName: googleUser.displayName,
+                        emailVerified: true
+                    });
+                }
+
+                user = await UserModel.findByIdForAuth(existing.id);
+            } else {
+                const randomPassword = crypto.randomBytes(32).toString('hex');
+                const passwordHash = await bcrypt.hash(randomPassword, 10);
+                const userId = await UserModel.create({
+                    email: googleUser.email,
+                    passwordHash,
+                    displayName: googleUser.displayName,
+                    googleId: googleUser.googleId,
+                    avatarUrl: googleUser.avatarUrl,
+                    emailVerified: true
+                });
+                user = await UserModel.findByIdForAuth(userId);
+            }
+        }
+
+        if (!user) {
+            return res.status(500).json({ error: 'Google login failed' });
+        }
+
+        if (!user.is_active) {
+            return res.status(403).json({ error: 'Account is disabled. Please contact support.' });
+        }
+
+        res.json(await issueAuthResponse(user));
+    } catch (err) {
+        const status = err.statusCode || 500;
+        const message = err.statusCode ? err.message : 'Google login failed';
+        console.error('Google login error:', err.message);
+        res.status(status).json({ error: message });
+    }
+}
+
+/**
+ * POST /api/auth/forgot-password
+ */
+async function forgotPassword(req, res) {
+    const email = normalizeEmail(req.body.email);
+
+    if (!email) {
+        return res.status(400).json({ error: 'Email required' });
+    }
+
+    try {
+        const user = await UserModel.findByEmail(email);
+
+        if (user && user.is_active) {
+            const code = generateResetCode();
+            const codeHash = await bcrypt.hash(code, 10);
+            const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+
+            try {
+                await PasswordResetCodeModel.consumeActiveForUser(user.id);
+                await PasswordResetCodeModel.create({ userId: user.id, codeHash, expiresAt });
+                await sendPasswordResetCode(email, code);
+            } catch (err) {
+                console.error('Password reset email error:', err.message);
+            }
+        }
+    } catch (err) {
+        console.error('Forgot password lookup error:', err.message);
+    }
+
+    res.json({ message: GENERIC_RESET_MESSAGE });
+}
+
+/**
+ * POST /api/auth/reset-password
+ */
+async function resetPassword(req, res) {
+    try {
+        const email = normalizeEmail(req.body.email);
+        const code = String(req.body.code || '').trim();
+        const newPassword = String(req.body.newPassword || '');
+
+        if (!email || !code || !newPassword) {
+            return res.status(400).json({ error: 'Email, code, and new password required' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+
+        const user = await UserModel.findByEmail(email);
+        if (!user || !user.is_active) {
+            return res.status(400).json({ error: 'Invalid or expired reset code' });
+        }
+
+        const resetCode = await PasswordResetCodeModel.findLatestActiveByUserId(user.id);
+        if (!resetCode) {
+            return res.status(400).json({ error: 'Invalid or expired reset code' });
+        }
+
+        if (resetCode.attempts >= MAX_PASSWORD_RESET_ATTEMPTS) {
+            await PasswordResetCodeModel.markConsumed(resetCode.id);
+            return res.status(400).json({ error: 'Invalid or expired reset code' });
+        }
+
+        const valid = await bcrypt.compare(code, resetCode.code_hash);
+        if (!valid) {
+            await PasswordResetCodeModel.incrementAttempts(resetCode.id);
+            return res.status(400).json({ error: 'Invalid or expired reset code' });
+        }
+
+        const passwordHash = await bcrypt.hash(newPassword, 10);
+        await UserModel.updatePassword(user.id, passwordHash);
+        await UserModel.clearRefreshToken(user.id);
+        await PasswordResetCodeModel.markConsumed(resetCode.id);
+
+        res.json({ message: 'Password reset successfully' });
+    } catch (err) {
+        console.error('Reset password error:', err);
+        res.status(500).json({ error: 'Failed to reset password' });
     }
 }
 
@@ -123,6 +344,10 @@ async function refresh(req, res) {
             return res.status(401).json({ error: 'User not found' });
         }
 
+        if (!user.refresh_token_hash) {
+            return res.status(401).json({ error: 'Invalid refresh token' });
+        }
+
         // Verify refresh token hash
         const valid = await bcrypt.compare(refreshToken, user.refresh_token_hash);
         if (!valid) {
@@ -130,11 +355,7 @@ async function refresh(req, res) {
         }
 
         // Generate new access token (must include role to match login token shape)
-        const accessToken = jwt.sign(
-            { userId: user.id, email: user.email, role: user.role || 'user' },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
-        );
+        const accessToken = createAccessToken(user);
 
         res.json({ accessToken });
     } catch (err) {
@@ -174,6 +395,9 @@ async function me(req, res) {
 module.exports = {
     register,
     login,
+    googleLogin,
+    forgotPassword,
+    resetPassword,
     refresh,
     me
 };
