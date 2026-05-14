@@ -32,6 +32,9 @@ router.post('/attempts/:attemptId/answer', authMiddleware, hskExamController.sub
 // Finish exam and get score
 router.post('/attempts/:attemptId/finish', authMiddleware, hskExamController.finishExam);
 
+// AI grading status for writing types
+router.get('/attempts/:attemptId/ai-grade-status', authMiddleware, hskExamController.getAiGradeStatus);
+
 // Get exam result
 router.get('/attempts/:attemptId/result', authMiddleware, hskExamController.getExamResult);
 

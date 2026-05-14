@@ -4,6 +4,8 @@ const Question = require('../models/question.model');
 const TextbookLesson = require('../models/textbookLesson.model');
 const db = require('../config/database');
 const streakService = require('../services/streak.service');
+const xpService = require('../services/xp.service');
+const Course = require('../models/course.model');
 
 // Get all lessons for a course.
 // ?include_inactive=1: trả cả bài soft-deleted — chỉ cho admin (route đã gắn
@@ -56,6 +58,15 @@ exports.getLessonDetails = async (req, res) => {
 exports.createLesson = async (req, res) => {
     try {
         const id = await Lesson.create(req.body);
+        if (req.body?.course_id && req.body?.is_active !== false) {
+            try {
+                await Course.reopenCompletionsForCourse(req.body.course_id);
+                const pushService = require('../services/push.service');
+                await pushService.notifyCourseLessonAdded(req.body.course_id);
+            } catch (error) {
+                console.error('Course completion reopen failed (non-blocking):', error);
+            }
+        }
         res.status(201).json({ success: true, data: { id, ...req.body } });
     } catch (error) {
         console.error('Create lesson error:', error);
@@ -160,7 +171,11 @@ exports.updateLessonProgress = async (req, res) => {
             if (!wasAlreadyCompleted) {
                 try {
                     await streakService.updateStreak(userId);
-                    await streakService.addXP(userId, 20);
+                    await xpService.awardXp(userId, 'lesson_complete', {
+                        refId: lessonId,
+                        refType: 'lesson',
+                    });
+                    await Course.markCompletionIfDone(userId, lesson.course_id);
                 } catch (e) {
                     console.error('Streak/XP update failed (non-blocking):', e);
                 }
@@ -213,7 +228,10 @@ exports.markSectionDone = async (req, res) => {
         if (result.justCompleted) {
             try {
                 await streakService.updateStreak(userId);
-                await streakService.addXP(userId, 20);
+                await xpService.awardXp(userId, 'lesson_complete', {
+                    refId: lessonId,
+                    refType: 'lesson',
+                });
             } catch (e) {
                 console.error('Streak/XP update failed (non-blocking):', e);
             }

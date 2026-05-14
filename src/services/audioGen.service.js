@@ -1,0 +1,120 @@
+const db = require('../config/database');
+const Vocab = require('../models/vocab.model');
+const Lesson = require('../models/lesson.model');
+const HskExam = require('../models/hskExam.model');
+const cloudTts = require('./cloudTts.service');
+const gcs = require('./gcs.service');
+
+function normalizeText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+async function uploadAudio(prefix, filename, buffer) {
+    return gcs.uploadBuffer({
+        bucketName: gcs.getBucketName('audio'),
+        objectName: `${prefix.replace(/^\/+|\/+$/g, '')}/${filename}`,
+        buffer,
+        contentType: buffer.contentType || 'audio/mpeg',
+        publicRead: process.env.GCS_UPLOAD_PUBLIC === 'true',
+    });
+}
+
+async function genVocabAudio(vocabId) {
+    const vocab = await Vocab.getById(vocabId);
+    if (!vocab) {
+        const err = new Error('Vocabulary not found');
+        err.status = 404;
+        throw err;
+    }
+
+    const audio = await cloudTts.synthesize(vocab.simplified, { voice: 'female', speed: 0.9 });
+    const url = await uploadAudio('vocab', `${vocabId}.mp3`, audio);
+    await Vocab.update(vocabId, { audio_url: url });
+    return { url };
+}
+
+async function getHskQuestion(questionId) {
+    const [rows] = await db.execute(
+        `SELECT q.*, s.exam_id
+           FROM hsk_questions q
+           JOIN hsk_sections s ON s.id = q.section_id
+          WHERE q.id = ?`,
+        [questionId]
+    );
+    return rows[0] || null;
+}
+
+async function genHskListeningAudio(questionId) {
+    const question = await getHskQuestion(questionId);
+    if (!question) {
+        const err = new Error('HSK question not found');
+        err.status = 404;
+        throw err;
+    }
+
+    const text = normalizeText(question.transcript || question.question_text || question.statement);
+    if (!text) {
+        const err = new Error('Question has no transcript/text for TTS');
+        err.status = 400;
+        throw err;
+    }
+
+    const audio = await cloudTts.synthesize(text, { voice: 'female', speed: 0.95 });
+    const url = await uploadAudio(`hsk/${question.exam_id}`, `${questionId}.mp3`, audio);
+    await HskExam.updateQuestion(questionId, { question_audio: url });
+    return { url };
+}
+
+async function genLessonAudio(lessonId) {
+    const lesson = await Lesson.findById(lessonId);
+    if (!lesson) {
+        const err = new Error('Lesson not found');
+        err.status = 404;
+        throw err;
+    }
+
+    const text = normalizeText(lesson.passage_zh || lesson.title);
+    if (!text) {
+        const err = new Error('Lesson has no passage text for TTS');
+        err.status = 400;
+        throw err;
+    }
+
+    const audio = await cloudTts.synthesize(text, { voice: 'female', speed: 0.9 });
+    const url = await uploadAudio(`lessons/${lessonId}`, 'passage.mp3', audio);
+    await db.execute('UPDATE lessons SET passage_audio_url = ? WHERE id = ?', [url, lessonId]);
+    return { url };
+}
+
+async function genExampleAudio(exampleId) {
+    const [rows] = await db.execute(
+        'SELECT id, sentence_zh FROM dictionary_examples WHERE id = ?',
+        [exampleId]
+    ).catch((error) => {
+        if (error.code === 'ER_NO_SUCH_TABLE') return [[]];
+        throw error;
+    });
+    const example = rows[0];
+    if (!example) {
+        const err = new Error('Example not found');
+        err.status = 404;
+        throw err;
+    }
+
+    const audio = await cloudTts.synthesize(normalizeText(example.sentence_zh), { voice: 'female', speed: 0.9 });
+    const url = await uploadAudio('examples', `${exampleId}.mp3`, audio);
+    await db.execute(
+        `UPDATE dictionary_examples
+            SET audio_url = ?, audio_provider = 'manual'
+          WHERE id = ?`,
+        [url, exampleId]
+    );
+    return { url };
+}
+
+module.exports = {
+    genVocabAudio,
+    genHskListeningAudio,
+    genLessonAudio,
+    genExampleAudio,
+};

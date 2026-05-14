@@ -27,5 +27,6 @@ router.post('/match-clear', practiceController.clearMatchPair);
 // HF4.4 — Translate game (Groq) — gated by aiRateLimit + server session token
 router.post('/translate-prompt', aiRateLimit, practiceController.translatePrompt);
 router.post('/translate-grade',  aiRateLimit, practiceController.translateGrade);
+router.post('/write-complete', practiceController.writeComplete);
 
 module.exports = router;

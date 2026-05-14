@@ -20,6 +20,7 @@ function toUserResponse(user) {
         avatarUrl: user.avatar_url,
         role: user.role,
         targetHsk: user.target_hsk,
+        completedHskLevels: UserModel.parseJsonArray(user.completed_hsk_levels).map(Number).filter(Number.isFinite),
         dailyGoalMins: user.daily_goal_mins,
         preferredVoice: user.preferred_voice,
         totalXp: user.total_xp || 0,

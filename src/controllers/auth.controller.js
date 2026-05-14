@@ -45,6 +45,9 @@ function createRefreshToken(user) {
 function toAuthUser(user) {
     const hasPassword = !!user.password_set_at;
     const profileCompleted = !!user.profile_completed_at;
+    const completedHskLevels = UserModel.parseJsonArray(user.completed_hsk_levels)
+        .map(Number)
+        .filter(Number.isFinite);
 
     return {
         id: user.id,
@@ -52,6 +55,7 @@ function toAuthUser(user) {
         displayName: user.display_name,
         role: user.role,
         targetHsk: user.target_hsk,
+        completedHskLevels,
         isPremium: !!user.is_premium,
         hasPassword,
         profileCompleted,
@@ -369,6 +373,7 @@ async function me(req, res) {
             displayName: user.display_name,
             avatarUrl: user.avatar_url,
             targetHsk: user.target_hsk,
+            completedHskLevels: UserModel.parseJsonArray(user.completed_hsk_levels).map(Number).filter(Number.isFinite),
             dailyGoalMins: user.daily_goal_mins,
             preferredVoice: user.preferred_voice,
             nativeLanguage: user.native_language,

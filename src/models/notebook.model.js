@@ -153,6 +153,68 @@ const Notebook = {
         `;
         const [result] = await db.execute(sql, [masteryLevel, itemId, userId]);
         return result.affectedRows;
+    },
+
+    moveItems: async (sourceNotebookId, userId, vocabIds, targetNotebookId) => {
+        const cleanIds = [...new Set((vocabIds || []).map(Number).filter(Number.isFinite))];
+        if (!cleanIds.length) return { moved: 0 };
+
+        const [owned] = await db.execute(
+            `SELECT id FROM notebooks WHERE user_id = ? AND id IN (?, ?)`,
+            [userId, sourceNotebookId, targetNotebookId]
+        );
+        if (owned.length < 2 && String(sourceNotebookId) !== String(targetNotebookId)) {
+            return { forbidden: true, moved: 0 };
+        }
+        if (String(sourceNotebookId) === String(targetNotebookId)) return { moved: 0 };
+
+        const placeholders = cleanIds.map(() => '?').join(',');
+        await db.execute(
+            `INSERT IGNORE INTO notebook_items (notebook_id, vocabulary_id, vocab_id, note, mastery_level)
+             SELECT ?, COALESCE(ni.vocabulary_id, ni.vocab_id), COALESCE(ni.vocab_id, ni.vocabulary_id), ni.note, ni.mastery_level
+               FROM notebook_items ni
+               JOIN notebooks n ON n.id = ni.notebook_id
+              WHERE ni.notebook_id = ?
+                AND n.user_id = ?
+                AND COALESCE(ni.vocab_id, ni.vocabulary_id) IN (${placeholders})`,
+            [targetNotebookId, sourceNotebookId, userId, ...cleanIds]
+        );
+        const [result] = await db.execute(
+            `DELETE ni FROM notebook_items ni
+              JOIN notebooks n ON n.id = ni.notebook_id
+             WHERE ni.notebook_id = ?
+               AND n.user_id = ?
+               AND COALESCE(ni.vocab_id, ni.vocabulary_id) IN (${placeholders})`,
+            [sourceNotebookId, userId, ...cleanIds]
+        );
+        return { moved: result.affectedRows };
+    },
+
+    searchUserVocab: async (userId, query, mastery = 'all', limit = 20) => {
+        const cappedLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 20);
+        let sql = `
+            SELECT DISTINCT v.id, v.simplified, v.pinyin, v.meaning_vi,
+                   v.hsk_level, ni.mastery_level, n.name AS notebook_name
+              FROM notebook_items ni
+              JOIN notebooks n ON n.id = ni.notebook_id
+              JOIN vocabulary v ON (v.id = ni.vocab_id OR v.id = ni.vocabulary_id)
+             WHERE n.user_id = ?
+               AND (
+                    v.simplified LIKE ?
+                 OR v.pinyin LIKE ?
+                 OR v.meaning_vi LIKE ?
+               )
+        `;
+        const term = `%${String(query || '').trim()}%`;
+        const params = [userId, term, term, term];
+        if (['new', 'learning', 'mastered'].includes(mastery)) {
+            sql += ' AND ni.mastery_level = ?';
+            params.push(mastery);
+        }
+        sql += ' ORDER BY ni.last_reviewed_at ASC, ni.added_at DESC LIMIT ?';
+        params.push(cappedLimit);
+        const [rows] = await db.execute(sql, params);
+        return rows;
     }
 };
 

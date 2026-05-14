@@ -10,7 +10,7 @@
  * that the fallback path also feels varied, not just the Groq path.
  */
 
-const groqService = require('../services/groq');
+const geminiService = require('../services/gemini.service');
 
 /**
  * Length / structure guidance per HSK level.
@@ -230,9 +230,9 @@ Trong đó:
 
     let result;
     try {
-        result = await groqService.sendMessage(messages, requestId || ('practice-gen-' + Date.now()));
+        result = await geminiService.sendMessage(messages, requestId || ('practice-gen-' + Date.now()));
     } catch (err) {
-        console.error('[practiceTexts] Groq failed:', err.message);
+        console.error('[practiceTexts] Gemini failed:', err.message);
         return null;
     }
 
@@ -261,7 +261,7 @@ Trong đó:
         text: parsed.text.trim(),
         pinyin: (parsed.pinyin || '').trim(),
         meaning: (parsed.meaning || '').trim(),
-        source: 'groq',
+        source: 'gemini',
     };
 }
 

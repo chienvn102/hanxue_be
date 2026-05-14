@@ -7,7 +7,10 @@
  */
 
 const crypto = require('crypto');
-const azureSpeech = require('../services/azureSpeech');
+const cloudSpeech = require('../services/cloudSpeech.service');
+const cloudTts = require('../services/cloudTts.service');
+const gemini = require('../services/gemini.service');
+const pinyinService = require('../services/pinyin.service');
 const pronunciationFeedbackService = require('../services/pronunciationFeedback.service');
 const { incrementDailySpeechCount } = require('../middleware/speechRateLimit');
 
@@ -34,7 +37,7 @@ async function transcribe(req, res) {
 
         console.log(`[${requestId}] Transcribe: userId=${userId}, fileSize=${req.file.size}, mime=${req.file.mimetype}`);
 
-        const result = await azureSpeech.transcribe(req.file.buffer, requestId);
+        const result = await cloudSpeech.transcribe(req.file.buffer, { requestId });
 
         // Increment speech count after successful request
         incrementDailySpeechCount(userId).catch(err => {
@@ -86,7 +89,7 @@ async function pronunciation(req, res) {
 
         console.log(`[${requestId}] Pronunciation: userId=${userId}, ref="${referenceText.slice(0, 50)}", fileSize=${req.file.size}`);
 
-        const result = await azureSpeech.assessPronunciation(
+        const result = await cloudSpeech.assessPronunciation(
             req.file.buffer,
             referenceText.trim(),
             requestId
@@ -96,6 +99,35 @@ async function pronunciation(req, res) {
         const bilingual = pronunciationFeedbackService.generateFeedback(result);
         result.feedback = bilingual.zh;     // backwards compat: TTS reads this
         result.feedbackVi = bilingual.vi;   // new: shown to learner
+
+        try {
+            const referencePinyin = String(req.body.referencePinyin || pinyinService.convert(referenceText).join(' '));
+            const detectedPinyin = pinyinService.convert(result.recognizedText).join(' ');
+            const ai = await gemini.chat([
+                {
+                    role: 'system',
+                    content: 'Ban la giao vien phat am tieng Trung. Tra ve CHI JSON hop le, ngan gon.',
+                },
+                {
+                    role: 'user',
+                    content:
+                        `Reference: ${referenceText} (${referencePinyin})\n` +
+                        `Hoc vien noi: ${result.recognizedText} (${detectedPinyin})\n` +
+                        `Score tam tinh: ${result.pronunciationScore}\n\n` +
+                        'Tra JSON: {"score":0-100,"tone_errors":[],"phoneme_errors":[],"exercises":["..."],"feedback_vi":"..."}',
+                },
+            ], { temperature: 0.2, maxOutputTokens: 700 });
+            const parsed = JSON.parse(gemini.unwrapJsonFence(ai.text));
+            result.aiFeedback = parsed;
+            if (Number.isFinite(Number(parsed.score))) {
+                result.pronunciationScore = Math.max(0, Math.min(100, Number(parsed.score)));
+            }
+            if (parsed.feedback_vi) {
+                result.feedbackVi = parsed.feedback_vi;
+            }
+        } catch (aiErr) {
+            console.error(`[${requestId}] Pronunciation AI feedback skipped:`, aiErr.message);
+        }
 
         // Increment speech count after successful request
         incrementDailySpeechCount(userId).catch(err => {
@@ -147,13 +179,15 @@ async function tts(req, res) {
 
         console.log(`[${requestId}] TTS: userId=${userId}, textLen=${text.length}`);
 
-        const audioBuffer = await azureSpeech.synthesize(text.trim(), requestId);
+        const audioBuffer = await cloudTts.synthesize(text.trim(), {
+            voice: req.body.voice || req.user?.preferredVoice || 'female',
+        });
 
         // TTS does NOT consume daily quota — sample/feedback playback should be free
         // so a practice session costs 1 unit (the pronunciation submit), not 2-3.
 
         res.set({
-            'Content-Type': 'audio/wav',
+            'Content-Type': audioBuffer.contentType || 'audio/mpeg',
             'Content-Length': audioBuffer.length,
             'Cache-Control': 'no-cache',
         });

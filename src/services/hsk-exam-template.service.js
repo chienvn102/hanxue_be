@@ -8,8 +8,8 @@
  *   - Insert N placeholder questions với question_type đúng + question_number
  *     1..N + correct_answer = 'A' (admin sẽ chỉnh sau).
  *
- * Chỉ hỗ trợ HSK 1 / 2 / 3 (HF2 acceptance). HSK 4–6 sẽ throw
- * UNSUPPORTED_LEVEL — FE render placeholder "Đang chuẩn bị".
+ * Supports HSK 1-6 templates. HSK 4-6 use coarse official part structure
+ * and placeholder content for admin editing.
  */
 
 const db = require('../config/database');
@@ -21,7 +21,7 @@ const PLACEHOLDER_ANSWER = 'A';
  *
  *   count       — số câu trong part
  *   questionType— enum question_type
- *   group       — { type: 'image_grid'|'reply_bank'|'word_bank'|'passage',
+ *   group       — { type: 'image_grid'|'reply_bank'|'word_bank'|'passage'|'passage_multi',
  *                   title: '...', items: number }
  *                 nếu null → không tạo group, mỗi câu standalone.
  */
@@ -130,6 +130,125 @@ const TEMPLATES = {
             },
         ],
     },
+
+    4: {
+        title: 'HSK 4 - De moi',
+        duration_minutes: 105,
+        passing_score: 180,
+        sections: [
+            {
+                section_type: 'listening',
+                title: 'Phan 1 - Nghe (听力)',
+                instructions: 'HSK 4 listening: true/false + short/long dialogue MCQ.',
+                duration_seconds: 30 * 60,
+                parts: [
+                    { count: 10, questionType: 'true_false', group: null },
+                    { count: 15, questionType: 'multiple_choice', group: null },
+                    { count: 20, questionType: 'multiple_choice', group: null },
+                ],
+            },
+            {
+                section_type: 'reading',
+                title: 'Phan 2 - Doc (阅读)',
+                instructions: 'HSK 4 reading: word bank + passage MCQ.',
+                duration_seconds: 40 * 60,
+                parts: [
+                    { count: 10, questionType: 'word_bank_fill', group: { type: 'word_bank', title: 'Bo tu A-F', items: 6 } },
+                    { count: 10, questionType: 'multiple_choice', group: null },
+                    { count: 20, questionType: 'multiple_choice', group: { type: 'passage_multi', title: 'Passage multi-question', items: 0 } },
+                ],
+            },
+            {
+                section_type: 'writing',
+                title: 'Phan 3 - Viet (书写)',
+                instructions: 'HSK 4 writing: assemble sentence + image keyword sentence.',
+                duration_seconds: 25 * 60,
+                parts: [
+                    { count: 10, questionType: 'sentence_assembly', group: null },
+                    { count: 5, questionType: 'image_keyword_sentence', group: null },
+                ],
+            },
+        ],
+    },
+
+    5: {
+        title: 'HSK 5 - De moi',
+        duration_minutes: 125,
+        passing_score: 180,
+        sections: [
+            {
+                section_type: 'listening',
+                title: 'Phan 1 - Nghe (听力)',
+                instructions: 'HSK 5 listening: dialogue/monologue MCQ.',
+                duration_seconds: 30 * 60,
+                parts: [
+                    { count: 20, questionType: 'multiple_choice', group: null },
+                    { count: 25, questionType: 'multiple_choice', group: null },
+                ],
+            },
+            {
+                section_type: 'reading',
+                title: 'Phan 2 - Doc (阅读)',
+                instructions: 'HSK 5 reading: word bank + long passage MCQ.',
+                duration_seconds: 45 * 60,
+                parts: [
+                    { count: 15, questionType: 'word_bank_fill', group: { type: 'word_bank', title: 'Bo tu A-J', items: 10 } },
+                    { count: 10, questionType: 'multiple_choice', group: null },
+                    { count: 20, questionType: 'multiple_choice', group: { type: 'passage_multi', title: 'Long passage multi-question', items: 0 } },
+                ],
+            },
+            {
+                section_type: 'writing',
+                title: 'Phan 3 - Viet (书写)',
+                instructions: 'HSK 5 writing: assemble sentence + short essay.',
+                duration_seconds: 45 * 60,
+                parts: [
+                    { count: 8, questionType: 'sentence_assembly', group: null },
+                    { count: 2, questionType: 'short_essay', group: null },
+                ],
+            },
+        ],
+    },
+
+    6: {
+        title: 'HSK 6 - De moi',
+        duration_minutes: 140,
+        passing_score: 180,
+        sections: [
+            {
+                section_type: 'listening',
+                title: 'Phan 1 - Nghe (听力)',
+                instructions: 'HSK 6 listening: monologue/interview/story MCQ.',
+                duration_seconds: 35 * 60,
+                parts: [
+                    { count: 15, questionType: 'multiple_choice', group: null },
+                    { count: 15, questionType: 'multiple_choice', group: { type: 'passage_multi', title: 'Interview passage', items: 0 } },
+                    { count: 20, questionType: 'multiple_choice', group: null },
+                ],
+            },
+            {
+                section_type: 'reading',
+                title: 'Phan 2 - Doc (阅读)',
+                instructions: 'HSK 6 reading: error identify + blank choice + sentence into passage + long passage.',
+                duration_seconds: 50 * 60,
+                parts: [
+                    { count: 10, questionType: 'error_identify', group: null },
+                    { count: 10, questionType: 'multi_blank_choice', group: null },
+                    { count: 10, questionType: 'sentence_into_passage', group: null },
+                    { count: 20, questionType: 'multiple_choice', group: { type: 'passage_multi', title: 'Long passage multi-question', items: 0 } },
+                ],
+            },
+            {
+                section_type: 'writing',
+                title: 'Phan 3 - Viet (书写)',
+                instructions: 'HSK 6 writing: summary essay.',
+                duration_seconds: 45 * 60,
+                parts: [
+                    { count: 1, questionType: 'summary_essay', group: null },
+                ],
+            },
+        ],
+    },
 };
 
 /**
@@ -151,19 +270,27 @@ function buildGroupContent(group) {
     if (group.type === 'passage') {
         return { passage_zh: '', passage_pinyin: '', passage_vi: '' };
     }
+    if (group.type === 'passage_multi') {
+        return {
+            passage_zh: '',
+            passage_pinyin: '',
+            passage_vi: '',
+            question_refs: [],
+        };
+    }
     return null;
 }
 
 /**
  * Public — atomic instantiate full HSK exam from template.
  *
- * @param {1|2|3} level
+ * @param {1|2|3|4|5|6} level
  * @param {{title?: string, exam_type?: string, description?: string}} overrides
  * @returns {Promise<{examId: number, totalQuestions: number}>}
  */
 async function instantiateTemplate(level, overrides = {}) {
-    if (![1, 2, 3].includes(level)) {
-        const err = new Error(`HSK ${level} chưa có template. Chỉ hỗ trợ HSK 1/2/3.`);
+    if (!TEMPLATES[level]) {
+        const err = new Error(`HSK ${level} chua co template.`);
         err.code = 'UNSUPPORTED_LEVEL';
         throw err;
     }

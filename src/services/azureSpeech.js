@@ -1,5 +1,9 @@
 /**
- * Azure Speech Service
+ * DEPRECATED: Azure Speech Service.
+ *
+ * HanXue now uses cloudSpeech.service.js and cloudTts.service.js. This file is
+ * kept only as a rollback shim during deployment verification.
+ *
  * Wrapper for Azure Cognitive Services Speech SDK
  * Features: STT (transcribe), pronunciation assessment, TTS
  *

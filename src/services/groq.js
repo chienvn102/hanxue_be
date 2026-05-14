@@ -1,5 +1,9 @@
 /**
- * Groq AI Service
+ * DEPRECATED: Groq AI Service.
+ *
+ * HanXue now uses services/gemini.service.js (Vertex AI Gemini). This file is
+ * kept only as a rollback shim during deployment verification.
+ *
  * Wrapper for Groq API chat completions
  * Features: timeout, 1x retry on transient errors, JSON response guard
  *

@@ -8,6 +8,7 @@
 
 const ProgressModel = require('../models/progress.model');
 const streakService = require('../services/streak.service');
+const xpService = require('../services/xp.service');
 
 /**
  * Compute mastery_level (0–5) từ accuracy + total reviews. Đơn giản hoá thay
@@ -141,8 +142,11 @@ async function submitReview(req, res) {
         let xpEarned = 0;
         try {
             await streakService.updateStreak(userId);
-            xpEarned = isCorrect ? streakService.calculateXP(quality) : 0;
-            if (xpEarned > 0) await streakService.addXP(userId, xpEarned);
+            xpEarned = isCorrect ? await xpService.awardXp(userId, 'flashcard_review', {
+                quality,
+                refId: vocabId,
+                refType: 'vocabulary',
+            }) : 0;
         } catch (streakErr) {
             console.error('Streak/XP update error:', streakErr);
         }

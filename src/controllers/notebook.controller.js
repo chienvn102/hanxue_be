@@ -130,6 +130,24 @@ const notebookController = {
         }
     },
 
+    moveItems: async (req, res) => {
+        try {
+            const result = await Notebook.moveItems(
+                req.params.id,
+                req.user.userId,
+                req.body?.vocab_ids,
+                req.body?.target_notebook_id
+            );
+            if (result.forbidden) {
+                return res.status(403).json({ success: false, message: 'Khong co quyen truy cap so tay' });
+            }
+            res.json({ success: true, data: result });
+        } catch (error) {
+            console.error('Error moving notebook items:', error);
+            res.status(500).json({ success: false, message: 'Loi server' });
+        }
+    },
+
     // Quick save vocab to default notebook
     saveVocab: async (req, res) => {
         try {

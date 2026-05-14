@@ -5,13 +5,24 @@
 
 const db = require('../config/database');
 
+function parseJsonArray(value) {
+    if (Array.isArray(value)) return value;
+    if (!value) return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
 /**
  * Find user by email
  */
 async function findByEmail(email) {
     const [rows] = await db.execute(
         `SELECT id, email, password_hash, display_name, role, is_active, google_id,
-                avatar_url, target_hsk, daily_goal_mins, preferred_voice,
+                avatar_url, target_hsk, completed_hsk_levels, daily_goal_mins, preferred_voice,
                 native_language, is_premium, email_verified, password_set_at,
                 profile_completed_at
          FROM users WHERE email = ?`,
@@ -26,7 +37,7 @@ async function findByEmail(email) {
 async function findByEmailForLogin(email) {
     const [rows] = await db.execute(
         `SELECT id, email, password_hash, display_name, role, is_active,
-                target_hsk, is_premium, google_id, email_verified,
+                target_hsk, completed_hsk_levels, is_premium, google_id, email_verified,
                 password_set_at, profile_completed_at
          FROM users WHERE email = ?`,
         [email]
@@ -40,7 +51,7 @@ async function findByEmailForLogin(email) {
 async function findByIdForAuth(id) {
     const [rows] = await db.execute(
         `SELECT id, email, display_name, role, is_active, target_hsk,
-                is_premium, google_id, avatar_url, email_verified,
+                is_premium, google_id, avatar_url, email_verified, completed_hsk_levels,
                 password_set_at, profile_completed_at
          FROM users WHERE id = ?`,
         [id]
@@ -54,7 +65,7 @@ async function findByIdForAuth(id) {
 async function findById(id) {
     const [rows] = await db.execute(
         `SELECT id, email, display_name, avatar_url, role, is_active, target_hsk,
-                daily_goal_mins, preferred_voice, google_id, email_verified,
+                daily_goal_mins, preferred_voice, google_id, email_verified, completed_hsk_levels,
                 password_set_at, profile_completed_at,
                 total_xp, current_streak, longest_streak, total_study_days, 
                 last_study_date, native_language, is_premium, created_at
@@ -134,7 +145,7 @@ async function clearRefreshToken(userId) {
 async function findByGoogleId(googleId) {
     const [rows] = await db.execute(
         `SELECT id, email, display_name, avatar_url, role, is_active,
-                target_hsk, is_premium, google_id, email_verified,
+                target_hsk, completed_hsk_levels, is_premium, google_id, email_verified,
                 password_set_at, profile_completed_at
          FROM users WHERE google_id = ?`,
         [googleId]
@@ -280,6 +291,47 @@ async function completeOnboarding(userId, {
     );
 }
 
+async function getLearningProfile(userId) {
+    const [rows] = await db.execute(
+        `SELECT id, target_hsk, completed_hsk_levels, current_streak,
+                longest_streak, total_study_days, total_xp
+           FROM users
+          WHERE id = ?`,
+        [userId]
+    );
+    const user = rows[0];
+    if (!user) return null;
+
+    const targetHsk = user.target_hsk || 1;
+    const [[masteredRows], [totalRows]] = await Promise.all([
+        db.execute(
+            `SELECT COUNT(DISTINCT v.id) AS mastered
+               FROM vocabulary v
+               JOIN notebook_items ni ON (ni.vocab_id = v.id OR ni.vocabulary_id = v.id)
+               JOIN notebooks n ON n.id = ni.notebook_id
+              WHERE n.user_id = ?
+                AND v.hsk_level = ?
+                AND ni.mastery_level = 'mastered'`,
+            [userId, targetHsk]
+        ),
+        db.execute(
+            'SELECT COUNT(*) AS total FROM vocabulary WHERE hsk_level = ?',
+            [targetHsk]
+        ),
+    ]);
+
+    return {
+        targetHsk,
+        completedLevels: parseJsonArray(user.completed_hsk_levels).map(Number).filter(Number.isFinite),
+        masteredCount: Number(masteredRows[0]?.mastered || 0),
+        totalVocabHsk: Number(totalRows[0]?.total || 0),
+        totalStreakDays: Number(user.total_study_days || 0),
+        currentStreak: Number(user.current_streak || 0),
+        longestStreak: Number(user.longest_streak || 0),
+        totalXp: Number(user.total_xp || 0),
+    };
+}
+
 module.exports = {
     findByEmail,
     findByEmailForLogin,
@@ -294,5 +346,7 @@ module.exports = {
     updateProfile,
     findByIdWithPassword,
     updatePassword,
-    completeOnboarding
+    completeOnboarding,
+    getLearningProfile,
+    parseJsonArray
 };

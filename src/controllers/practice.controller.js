@@ -19,8 +19,9 @@
 const crypto = require('crypto');
 const practiceTexts = require('../config/practiceTexts');
 const db = require('../config/database');
-const groq = require('../services/groq');
+const gemini = require('../services/gemini.service');
 const streakService = require('../services/streak.service');
+const xpService = require('../services/xp.service');
 const ChatModel = require('../models/chat.model');
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
@@ -220,7 +221,10 @@ async function clearMatchPair(req, res) {
 
         try {
             await streakService.updateStreak(req.user.userId);
-            await streakService.addXP(req.user.userId, MATCH_XP_PER_PAIR);
+            await xpService.awardXp(req.user.userId, 'practice_match_pair', {
+                refId: vid,
+                refType: 'vocabulary',
+            });
         } catch (xpErr) {
             console.error('clearMatchPair streak/xp error:', xpErr.message);
         }
@@ -267,7 +271,7 @@ async function translatePrompt(req, res) {
             { role: 'user', content: 'Sinh 1 câu mới.' }
         ];
 
-        const { text } = await groq.sendMessage(messages, requestId);
+        const { text } = await gemini.sendMessage(messages, requestId);
         let parsed;
         try {
             parsed = JSON.parse(unwrapJsonFence(text));
@@ -378,7 +382,7 @@ async function translateGrade(req, res) {
             }
         ];
 
-        const { text } = await groq.sendMessage(messages, requestId);
+        const { text } = await gemini.sendMessage(messages, requestId);
         let parsed;
         try {
             parsed = JSON.parse(unwrapJsonFence(text));
@@ -395,9 +399,7 @@ async function translateGrade(req, res) {
         const correctZh = parsed.correct_zh ? String(parsed.correct_zh).trim() : session.expectedZh;
 
         // XP rules — không persist history per Q6
-        let xp = 1;
-        if (score >= 80) xp = 10;
-        else if (score >= 50) xp = 5;
+        const xp = xpService.calculateAmount('practice_translate', { score });
 
         // Mark session as graded → token một-lần-dùng
         session.graded = true;
@@ -406,7 +408,12 @@ async function translateGrade(req, res) {
 
         try {
             await streakService.updateStreak(req.user.userId);
-            if (xp > 0) await streakService.addXP(req.user.userId, xp);
+            if (xp > 0) {
+                await xpService.awardXp(req.user.userId, 'practice_translate', {
+                    score,
+                    refType: 'translate_session',
+                });
+            }
         } catch (xpErr) {
             console.error(`[${requestId}] streak/xp update failed:`, xpErr.message);
         }
@@ -435,10 +442,28 @@ async function translateGrade(req, res) {
     }
 }
 
+async function writeComplete(req, res) {
+    try {
+        const charactersCompleted = Math.min(Math.max(parseInt(req.body?.charactersCompleted, 10) || 1, 1), 20);
+        const totalMistakes = Math.max(parseInt(req.body?.totalMistakes, 10) || 0, 0);
+        const xpEarned = await xpService.awardXp(req.user.userId, 'write_complete', {
+            amount: charactersCompleted * 5,
+            refType: 'write_practice',
+            metadata: { charactersCompleted, totalMistakes },
+        });
+        await streakService.updateStreak(req.user.userId);
+        res.json({ success: true, xpEarned });
+    } catch (error) {
+        console.error('writeComplete error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+}
+
 module.exports = {
     getPracticeText,
     getMatchPairs,
     clearMatchPair,
     translatePrompt,
     translateGrade,
+    writeComplete,
 };

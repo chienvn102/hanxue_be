@@ -138,6 +138,26 @@ async function updateProgress(userId, vocabId, { masteryLevel, isCorrect, avgRes
     ]);
 }
 
+async function getRecentMistakes(userId, days = 7) {
+    const cappedDays = Math.min(Math.max(parseInt(days, 10) || 7, 1), 90);
+    const [rows] = await db.execute(
+        `SELECT ua.question_id, ua.user_answer, q.correct_answer, q.question_text,
+                q.question_type, e.hsk_level, ua.answered_at
+           FROM hsk_user_answers ua
+           JOIN hsk_exam_attempts a ON a.id = ua.attempt_id
+           JOIN hsk_questions q ON q.id = ua.question_id
+           JOIN hsk_sections s ON s.id = q.section_id
+           JOIN hsk_exams e ON e.id = s.exam_id
+          WHERE a.user_id = ?
+            AND ua.is_correct = FALSE
+            AND ua.answered_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+          ORDER BY ua.answered_at DESC
+          LIMIT 20`,
+        [userId, cappedDays]
+    );
+    return rows;
+}
+
 module.exports = {
     getNewVocab,
     getStats,
@@ -145,5 +165,6 @@ module.exports = {
     getProgress,
     getProgressWithVocab,
     createProgress,
-    updateProgress
+    updateProgress,
+    getRecentMistakes
 };

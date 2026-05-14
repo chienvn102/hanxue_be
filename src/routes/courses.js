@@ -3,10 +3,11 @@ const router = express.Router();
 const courseController = require('../controllers/course.controller');
 const { authMiddleware } = require('../middleware/auth');
 const roleMiddleware = require('../middleware/role.middleware');
+const { checkCourseUnlocked } = require('../middleware/courseUnlock.middleware');
 
 // Public routes (or authenticated user)
 router.get('/', authMiddleware, courseController.getCourses);
-router.get('/:id', authMiddleware, courseController.getCourse);
+router.get('/:id', authMiddleware, checkCourseUnlocked, courseController.getCourse);
 
 const adminMiddleware = require('../middleware/admin.middleware');
 

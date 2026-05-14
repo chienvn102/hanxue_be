@@ -156,11 +156,26 @@ async function getByLessonId(lessonId) {
     return rows;
 }
 
+async function findByHskLevel(hskLevel, limit = 20) {
+    const cappedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
+    const [rows] = await db.execute(
+        `SELECT id, pattern, pattern_pinyin, pattern_formula,
+                grammar_point, explanation, examples, hsk_level
+           FROM grammar_patterns
+          WHERE hsk_level = ?
+          ORDER BY id DESC
+          LIMIT ?`,
+        [hskLevel, cappedLimit]
+    );
+    return rows;
+}
+
 module.exports = {
     getList,
     getById,
     create,
     update,
     deleteById,
-    getByLessonId
+    getByLessonId,
+    findByHskLevel
 };

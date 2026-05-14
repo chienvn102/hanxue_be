@@ -72,6 +72,7 @@ app.use('/api/chat', require('./routes/chat'));
 app.use('/api/speech', require('./routes/speech'));
 app.use('/api/practice', require('./routes/practice'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 // 404 handler
 app.use((req, res) => {

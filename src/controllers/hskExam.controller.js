@@ -5,6 +5,7 @@
 
 const HskExamModel = require('../models/hskExam.model');
 const streakService = require('../services/streak.service');
+const xpService = require('../services/xp.service');
 const examTemplate = require('../services/hsk-exam-template.service');
 
 // ============================================================
@@ -52,16 +53,16 @@ async function createExam(req, res) {
 
 /**
  * POST /api/hsk-exams/from-template
- * Body: { level: 1|2|3, title?, exam_type?, description? }
+ * Body: { level: 1|2|3|4|5|6, title?, exam_type?, description? }
  * → atomic instantiate full exam skeleton (sections + groups + N placeholder questions).
  */
 async function createExamFromTemplate(req, res) {
     try {
         const level = parseInt(req.body?.level, 10);
-        if (![1, 2, 3].includes(level)) {
+        if (![1, 2, 3, 4, 5, 6].includes(level)) {
             return res.status(400).json({
                 success: false,
-                message: `HSK ${level || '?'} chưa có template. Chỉ hỗ trợ HSK 1/2/3.`
+                message: `HSK ${level || '?'} chưa có template. Chỉ hỗ trợ HSK 1-6.`
             });
         }
 
@@ -447,8 +448,16 @@ async function finishExam(req, res) {
         // Award XP + streak (only reached if grading succeeded)
         try {
             await streakService.updateStreak(userId);
-            const xp = result.isPassed ? 25 : 15;
-            await streakService.addXP(userId, xp);
+            await xpService.awardXp(userId, result.isPassed ? 'hsk_exam_pass' : 'hsk_exam_fail', {
+                refId: attemptId,
+                refType: 'hsk_attempt',
+            });
+            if (result.maxScore > 0 && result.totalScore / result.maxScore >= 0.95) {
+                await xpService.awardXp(userId, 'hsk_exam_perfect', {
+                    refId: attemptId,
+                    refType: 'hsk_attempt',
+                });
+            }
         } catch (e) {
             console.error('Streak/XP update failed (non-blocking):', e);
         }
@@ -531,6 +540,31 @@ async function getExamResult(req, res) {
     }
 }
 
+async function getAiGradeStatus(req, res) {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) return res.status(401).json({ error: 'User not authenticated' });
+
+        const attempt = await HskExamModel.getAttemptById(req.params.attemptId);
+        if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
+        if (attempt.user_id !== userId) return res.status(403).json({ error: 'Access denied' });
+
+        res.json({
+            success: true,
+            data: {
+                attemptId: attempt.id,
+                status: attempt.status,
+                requiresAiGrading: false,
+                aiStatus: 'not_configured',
+                message: 'AI grading queue is not enabled yet. Writing answers are saved for later grading.',
+            },
+        });
+    } catch (err) {
+        console.error('AI grade status error:', err);
+        res.status(500).json({ error: 'Failed to get AI grade status' });
+    }
+}
+
 async function getUserHistory(req, res) {
     try {
         const userId = req.user?.userId;
@@ -571,6 +605,7 @@ module.exports = {
     startExam,
     submitAnswer,
     finishExam,
+    getAiGradeStatus,
     getExamResult,
     getUserHistory
 };

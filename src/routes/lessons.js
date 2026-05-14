@@ -2,18 +2,22 @@ const express = require('express');
 const router = express.Router();
 const lessonController = require('../controllers/lesson.controller');
 const { authMiddleware, optionalAuth } = require('../middleware/auth');
+const {
+    checkCourseUnlocked,
+    checkLessonCourseUnlocked,
+} = require('../middleware/courseUnlock.middleware');
 const roleMiddleware = require('../middleware/role.middleware');
 
 // Public/User routes (optionalAuth allows viewing without login)
-router.get('/course/:courseId', optionalAuth, lessonController.getLessonsByCourse);
-router.get('/:id', optionalAuth, lessonController.getLessonDetails);
+router.get('/course/:courseId', optionalAuth, checkCourseUnlocked, lessonController.getLessonsByCourse);
+router.get('/:id', optionalAuth, checkLessonCourseUnlocked, lessonController.getLessonDetails);
 
 // Textbook lesson — full payload + per-section progress
-router.get('/:id/textbook', optionalAuth, lessonController.getTextbookLesson);
+router.get('/:id/textbook', optionalAuth, checkLessonCourseUnlocked, lessonController.getTextbookLesson);
 
 // Authenticated user routes
-router.post('/:id/progress', authMiddleware, lessonController.updateLessonProgress);
-router.post('/:id/section-done', authMiddleware, lessonController.markSectionDone);
+router.post('/:id/progress', authMiddleware, checkLessonCourseUnlocked, lessonController.updateLessonProgress);
+router.post('/:id/section-done', authMiddleware, checkLessonCourseUnlocked, lessonController.markSectionDone);
 router.post('/writing/:exerciseId/submit', authMiddleware, lessonController.submitWritingExercise);
 
 const adminMiddleware = require('../middleware/admin.middleware');

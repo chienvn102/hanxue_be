@@ -5,6 +5,7 @@
  */
 
 const db = require('../config/database');
+const xpService = require('./xp.service');
 
 /**
  * Update user streak after study activity
@@ -94,16 +95,7 @@ async function updateStreak(userId) {
  * @param {number} xp - Amount of XP to add
  */
 async function addXP(userId, xp) {
-    try {
-        await db.execute(
-            'UPDATE users SET total_xp = COALESCE(total_xp, 0) + ? WHERE id = ?',
-            [xp, userId]
-        );
-        return true;
-    } catch (error) {
-        console.error('Add XP error:', error);
-        throw error;
-    }
+    return xpService.awardXp(userId, 'manual', { amount: xp, skipLevelUnlock: true });
 }
 
 /**
@@ -112,15 +104,7 @@ async function addXP(userId, xp) {
  * @returns {number} XP amount
  */
 function calculateXP(quality) {
-    const xpMap = {
-        0: 0,
-        1: 0,
-        2: 0,
-        3: 5,  // Correct with difficulty
-        4: 8,  // Correct with hesitation
-        5: 10  // Perfect response
-    };
-    return xpMap[quality] || 0;
+    return xpService.calculateXP(quality);
 }
 
 module.exports = {

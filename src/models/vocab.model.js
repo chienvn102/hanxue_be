@@ -8,7 +8,7 @@ const db = require('../config/database');
 /**
  * Get paginated vocabulary list with optional filters
  */
-async function getList({ hsk, q, theme, page = 1, limit = 20 }) {
+async function getList({ hsk, q, theme, lesson, page = 1, limit = 20 }) {
     const offset = (page - 1) * limit;
 
     // theme filter requires JOIN; do it via subquery so frequency_rank ORDER still works
@@ -16,15 +16,20 @@ async function getList({ hsk, q, theme, page = 1, limit = 20 }) {
         ? `JOIN vocabulary_theme_map vtm ON vtm.vocab_id = v.id
            JOIN vocabulary_themes vt ON vt.id = vtm.theme_id AND vt.slug = ?`
         : '';
+    const lessonJoin = lesson
+        ? 'JOIN lesson_vocabulary lv ON lv.vocabulary_id = v.id AND lv.lesson_id = ?'
+        : '';
 
     let sql = `SELECT v.id, v.simplified, v.traditional, v.pinyin, v.han_viet,
                       v.meaning_vi, v.meaning_en, v.hsk_level, v.word_type,
                       v.audio_url, v.frequency_rank
                FROM vocabulary v
                ${themeJoin}
+               ${lessonJoin}
                WHERE 1=1`;
     const params = [];
     if (theme) params.push(theme);
+    if (lesson) params.push(parseInt(lesson, 10));
 
     if (hsk) {
         sql += ' AND v.hsk_level = ?';
@@ -45,9 +50,10 @@ async function getList({ hsk, q, theme, page = 1, limit = 20 }) {
     const [rows] = await db.execute(sql, params);
 
     // Get total count (mirror filter set)
-    let countSql = `SELECT COUNT(*) as total FROM vocabulary v ${themeJoin} WHERE 1=1`;
+    let countSql = `SELECT COUNT(*) as total FROM vocabulary v ${themeJoin} ${lessonJoin} WHERE 1=1`;
     const countParams = [];
     if (theme) countParams.push(theme);
+    if (lesson) countParams.push(parseInt(lesson, 10));
 
     if (hsk) {
         countSql += ' AND v.hsk_level = ?';
@@ -232,6 +238,27 @@ async function deleteById(id) {
     return result.affectedRows;
 }
 
+async function findNotMasteredByUser(userId, hskLevel, limit = 10) {
+    const cappedLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 20);
+    const [rows] = await db.execute(
+        `SELECT v.id, v.simplified, v.pinyin, v.meaning_vi, v.hsk_level
+           FROM vocabulary v
+          WHERE v.hsk_level = ?
+            AND NOT EXISTS (
+                SELECT 1
+                  FROM notebook_items ni
+                  JOIN notebooks n ON n.id = ni.notebook_id
+                 WHERE n.user_id = ?
+                   AND (ni.vocab_id = v.id OR ni.vocabulary_id = v.id)
+                   AND ni.mastery_level = 'mastered'
+            )
+          ORDER BY RAND()
+          LIMIT ?`,
+        [hskLevel, userId, cappedLimit]
+    );
+    return rows;
+}
+
 module.exports = {
     getList,
     getById,
@@ -242,5 +269,6 @@ module.exports = {
     update,
     deleteById,
     listThemes,
-    getThemesForVocab
+    getThemesForVocab,
+    findNotMasteredByUser
 };

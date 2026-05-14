@@ -39,12 +39,13 @@ function formatVocab(row, includeExamples = false) {
  */
 async function list(req, res) {
     try {
-        const { hsk, q, theme, page = 1, limit = 20 } = req.query;
+        const { hsk, q, theme, lesson, page = 1, limit = 20 } = req.query;
 
         const { rows, total } = await VocabModel.getList({
             hsk,
             q,
             theme: theme && String(theme).trim() ? String(theme).trim() : undefined,
+            lesson: lesson && String(lesson).trim() ? String(lesson).trim() : undefined,
             page: parseInt(page),
             limit: parseInt(limit)
         });

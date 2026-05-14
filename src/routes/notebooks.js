@@ -19,6 +19,7 @@ router.delete('/:id', notebookController.deleteNotebook);
 // Notebook items
 router.get('/:id/items', notebookController.getNotebookItems);
 router.post('/:id/items', notebookController.addVocabToNotebook);
+router.post('/:id/items/move', notebookController.moveItems);
 router.delete('/:id/items/:vocabId', notebookController.removeVocabFromNotebook);
 
 module.exports = router;

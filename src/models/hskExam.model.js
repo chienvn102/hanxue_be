@@ -5,6 +5,12 @@
 
 const db = require('../config/database');
 
+const AI_GRADED_TYPES = new Set([
+    'image_keyword_sentence',
+    'short_essay',
+    'summary_essay',
+]);
+
 // ============================================================
 // EXAM OPERATIONS
 // ============================================================
@@ -410,12 +416,20 @@ async function completeAttempt(attemptId) {
         );
 
         let listeningScore = 0, readingScore = 0, writingScore = 0;
-        let correctCount = 0, wrongCount = 0;
+        let correctCount = 0, wrongCount = 0, aiPendingCount = 0;
         let totalTimeSpent = 0;
 
         // Grade each answer by comparing user_answer with correct_answer
         for (const ans of answers) {
             totalTimeSpent += ans.time_spent_seconds || 0;
+            if (AI_GRADED_TYPES.has(ans.question_type)) {
+                await conn.execute(
+                    `UPDATE hsk_user_answers SET is_correct = NULL, points_earned = 0 WHERE id = ?`,
+                    [ans.id]
+                );
+                aiPendingCount++;
+                continue;
+            }
             const isCorrect = gradeAnswer(ans.question_type, ans.user_answer, ans.correct_answer);
             const points = isCorrect ? (ans.question_points || 1) : 0;
 
@@ -441,7 +455,7 @@ async function completeAttempt(attemptId) {
         const examId = lockRows[0].exam_id;
         const [exam] = await conn.execute('SELECT passing_score, total_questions FROM hsk_exams WHERE id = ?', [examId]);
         const isPassed = totalScore >= (exam[0]?.passing_score || 0);
-        const unansweredCount = (exam[0]?.total_questions || 0) - correctCount - wrongCount;
+        const unansweredCount = (exam[0]?.total_questions || 0) - correctCount - wrongCount - aiPendingCount;
 
         // Calculate max possible score
         const [maxScoreResult] = await conn.execute(
@@ -464,7 +478,19 @@ async function completeAttempt(attemptId) {
 
         await conn.commit();
 
-        return { listeningScore, readingScore, writingScore, totalScore, maxScore, isPassed, correctCount, wrongCount, unansweredCount };
+        return {
+            listeningScore,
+            readingScore,
+            writingScore,
+            totalScore,
+            maxScore,
+            isPassed,
+            correctCount,
+            wrongCount,
+            unansweredCount,
+            aiPendingCount,
+            requiresAiGrading: aiPendingCount > 0
+        };
     } catch (err) {
         await conn.rollback();
         throw err;
