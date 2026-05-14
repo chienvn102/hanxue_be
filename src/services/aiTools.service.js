@@ -126,8 +126,13 @@ async function executeToolCall(functionCall, ctx) {
 }
 
 function extractFunctionCalls(response) {
+    // @google/genai v2 exposes `functionCalls` array directly on response.
+    if (Array.isArray(response?.functionCalls) && response.functionCalls.length) {
+        return response.functionCalls;
+    }
+    // Fallback: dig into candidates parts (also works on v1 Vertex AI shape).
     const parts = response?.candidates?.[0]?.content?.parts || [];
-    return parts.map(part => part.functionCall).filter(Boolean);
+    return parts.map(part => part.functionCall || part.function_call).filter(Boolean);
 }
 
 function getModelParts(response) {

@@ -4,6 +4,7 @@
  */
 
 const VocabModel = require('../models/vocab.model');
+const { resolveAudioUrl } = require('../services/audioUrl.service');
 
 /**
  * Format vocabulary row to API response
@@ -50,8 +51,14 @@ async function list(req, res) {
             limit: parseInt(limit)
         });
 
+        const formatted = await Promise.all(rows.map(async row => {
+            const v = formatVocab(row);
+            v.audioUrl = await resolveAudioUrl(v.audioUrl);
+            return v;
+        }));
+
         res.json({
-            data: rows.map(row => formatVocab(row)),
+            data: formatted,
             pagination: {
                 page: parseInt(page),
                 limit: parseInt(limit),
@@ -77,6 +84,7 @@ async function getById(req, res) {
         }
 
         const formatted = formatVocab(vocab, true);
+        formatted.audioUrl = await resolveAudioUrl(formatted.audioUrl);
         // Attach themes (graceful fallback nếu bảng chưa migrate)
         try {
             formatted.themes = await VocabModel.getThemesForVocab(vocab.id);

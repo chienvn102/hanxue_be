@@ -9,10 +9,15 @@
 const crypto = require('crypto');
 const cloudSpeech = require('../services/cloudSpeech.service');
 const cloudTts = require('../services/cloudTts.service');
+const azureSpeech = require('../services/azureSpeech');
 const gemini = require('../services/gemini.service');
 const pinyinService = require('../services/pinyin.service');
 const pronunciationFeedbackService = require('../services/pronunciationFeedback.service');
 const { incrementDailySpeechCount } = require('../middleware/speechRateLimit');
+
+function isAzureConfigured() {
+    return Boolean(process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION);
+}
 
 function genRequestId() {
     return 'speech-' + crypto.randomBytes(4).toString('hex');
@@ -87,43 +92,73 @@ async function pronunciation(req, res) {
             });
         }
 
-        console.log(`[${requestId}] Pronunciation: userId=${userId}, ref="${referenceText.slice(0, 50)}", fileSize=${req.file.size}`);
+        const useAzure = isAzureConfigured();
+        console.log(`[${requestId}] Pronunciation: userId=${userId}, ref="${referenceText.slice(0, 50)}", fileSize=${req.file.size}, provider=${useAzure ? 'azure' : 'cloud-speech-fallback'}`);
 
-        const result = await cloudSpeech.assessPronunciation(
-            req.file.buffer,
-            referenceText.trim(),
-            requestId
-        );
+        // Primary: Azure Speech với phoneme-level scoring. Fallback: Cloud Speech +
+        // Levenshtein diff (kém chính xác hơn nhưng vẫn chạy được nếu Azure xuống).
+        const result = useAzure
+            ? await azureSpeech.assessPronunciation(req.file.buffer, referenceText.trim(), requestId)
+            : await cloudSpeech.assessPronunciation(req.file.buffer, referenceText.trim(), requestId);
+        result.provider = useAzure ? 'azure' : 'cloud-speech';
 
-        // Generate bilingual feedback (Chinese for TTS, Vietnamese for display)
+        // Bilingual feedback rule-based (giữ legacy).
         const bilingual = pronunciationFeedbackService.generateFeedback(result);
         result.feedback = bilingual.zh;     // backwards compat: TTS reads this
         result.feedbackVi = bilingual.vi;   // new: shown to learner
 
+        // Gemini layer — lấy phoneme-level từ Azure để feedback chi tiết bằng tiếng Việt.
+        // Nếu provider là Cloud Speech fallback (không có phoneme) thì prompt sẽ nhận
+        // weakPhonemes rỗng → Gemini tự xử lý mặc dù feedback ít chi tiết hơn.
         try {
-            const referencePinyin = String(req.body.referencePinyin || pinyinService.convert(referenceText).join(' '));
+            const referencePinyin = String(
+                req.body.referencePinyin
+                || pinyinService.convert(referenceText).join(' ')
+            );
             const detectedPinyin = pinyinService.convert(result.recognizedText).join(' ');
+            const weakPhonemes = (result.words || []).flatMap(w =>
+                Array.isArray(w.phonemes)
+                    ? w.phonemes
+                        .filter(p => (p.accuracyScore ?? 100) < 60)
+                        .map(p => ({ phoneme: p.phoneme, score: p.accuracyScore, word: w.word }))
+                    : []
+            ).slice(0, 12); // cap để khỏi tốn token
+            const wrongWords = (result.words || [])
+                .filter(w => (w.accuracyScore ?? 100) < 70)
+                .map(w => `${w.word}(${w.accuracyScore})`)
+                .slice(0, 10)
+                .join(', ') || 'không có';
+
             const ai = await gemini.chat([
                 {
                     role: 'system',
-                    content: 'Ban la giao vien phat am tieng Trung. Tra ve CHI JSON hop le, ngan gon.',
+                    content: 'Ban la giao vien phat am tieng Trung chuyen nghiep. Tra ve CHI JSON hop le, ngan gon, cu the.',
                 },
                 {
                     role: 'user',
                     content:
-                        `Reference: ${referenceText} (${referencePinyin})\n` +
-                        `Hoc vien noi: ${result.recognizedText} (${detectedPinyin})\n` +
-                        `Score tam tinh: ${result.pronunciationScore}\n\n` +
-                        'Tra JSON: {"score":0-100,"tone_errors":[],"phoneme_errors":[],"exercises":["..."],"feedback_vi":"..."}',
+                        `Hoc vien HSK ${req.user?.targetHsk || 1} luyen doc: "${referenceText}" (${referencePinyin}).\n` +
+                        `Azure ghi nhan:\n` +
+                        `- Pronunciation: ${result.pronunciationScore}/100\n` +
+                        `- Accuracy: ${result.accuracyScore}, Fluency: ${result.fluencyScore}, Completeness: ${result.completenessScore}\n` +
+                        `- Hoc vien noi: "${result.recognizedText}" (${detectedPinyin})\n` +
+                        `- Tu phat am sai: ${wrongWords}\n` +
+                        `- Phoneme yeu (<60): ${weakPhonemes.length ? JSON.stringify(weakPhonemes) : 'khong co'}\n\n` +
+                        'Hay:\n' +
+                        '1. Liet ke CHINH XAC 1-3 loi quan trong nhat (tone/initial/final), kem cach sua bang tieng Viet.\n' +
+                        '2. Cho 2 bai tap ngan (1 dong/bai) bang tieng Viet kem tu Trung mau.\n' +
+                        '3. Tra JSON: {"score":0-100,"highlights":[{"phoneme":"...","error":"...","fix_vi":"..."}],"tone_errors":[{"word":"...","expected_tone":"...","detected_tone":"..."}],"phoneme_errors":[{"word":"...","phoneme":"...","fix_vi":"..."}],"exercises":["..."],"feedback_vi":"...","summary_vi":"..."}\n' +
+                        'KHONG bia neu khong co du lieu cu the.',
                 },
-            ], { temperature: 0.2, maxOutputTokens: 700 });
+            ], { temperature: 0.2, maxOutputTokens: 900 });
             const parsed = JSON.parse(gemini.unwrapJsonFence(ai.text));
             result.aiFeedback = parsed;
+            result.weakPhonemes = weakPhonemes;
             if (Number.isFinite(Number(parsed.score))) {
                 result.pronunciationScore = Math.max(0, Math.min(100, Number(parsed.score)));
             }
-            if (parsed.feedback_vi) {
-                result.feedbackVi = parsed.feedback_vi;
+            if (parsed.feedback_vi || parsed.summary_vi) {
+                result.feedbackVi = parsed.feedback_vi || parsed.summary_vi;
             }
         } catch (aiErr) {
             console.error(`[${requestId}] Pronunciation AI feedback skipped:`, aiErr.message);

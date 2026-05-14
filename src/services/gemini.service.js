@@ -1,19 +1,25 @@
 /**
- * Vertex AI Gemini service.
+ * Google Gen AI SDK wrapper (Vertex AI backend).
  *
- * This is the primary AI provider for HanXue. It keeps a Groq-compatible
- * `sendMessage()` adapter so existing controllers can migrate without changing
- * API response shapes.
+ * SDK: `@google/genai` v2.x — thay thế `@google-cloud/vertexai` đã deprecated
+ * (sẽ remove June 2026).
+ *
+ * Public API giữ nguyên để controller không cần đổi:
+ *   - chat(messages, opts)              → { text, usage, raw }
+ *   - sendMessage(messages, requestId)  → { text, tokensUsed }
+ *   - generateExamples(...)             → array
+ *   - gradeTranslate(...)               → { score, feedback_vi, correct_zh }
+ *   - unwrapJsonFence(text)             → text
  */
 
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const DEFAULT_LOCATION = process.env.GCP_LOCATION || 'asia-southeast1';
 const REQUEST_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '60000', 10);
 
-let vertexClient;
+let aiClient;
 
-function getVertexClient() {
-    if (vertexClient) return vertexClient;
+function getClient() {
+    if (aiClient) return aiClient;
 
     const project = process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
     if (!project) {
@@ -23,49 +29,51 @@ function getVertexClient() {
         throw err;
     }
 
-    const { VertexAI } = require('@google-cloud/vertexai');
-    vertexClient = new VertexAI({ project, location: DEFAULT_LOCATION });
-    return vertexClient;
+    const { GoogleGenAI } = require('@google/genai');
+    aiClient = new GoogleGenAI({
+        vertexai: true,
+        project,
+        location: DEFAULT_LOCATION,
+    });
+    return aiClient;
 }
 
-function toGeminiContents(messages = []) {
+/**
+ * Convert messages array sang shape của @google/genai:
+ *   - `contents: [{ role: 'user'|'model'|'function', parts: [...] }]`
+ *   - `systemInstruction` tách riêng ra option-level.
+ * Vẫn accept Groq-compatible shape `{ role: 'system'|'user'|'assistant'|'function', content?, parts? }`.
+ */
+function toGenAiContents(messages = []) {
     const contents = [];
     const systemParts = [];
 
     for (const msg of messages) {
-        const role = msg.role === 'assistant' || msg.role === 'model' ? 'model' : msg.role;
+        const rawRole = msg.role === 'assistant' ? 'model' : msg.role;
         if (Array.isArray(msg.parts)) {
-            if (role === 'system') {
+            if (rawRole === 'system') {
                 systemParts.push(...msg.parts.filter(p => p.text));
-            } else {
-                contents.push({
-                    role: role === 'function' ? 'function' : role === 'model' ? 'model' : 'user',
-                    parts: msg.parts,
-                });
+                continue;
             }
+            contents.push({
+                role: rawRole === 'function' ? 'function' : rawRole === 'model' ? 'model' : 'user',
+                parts: msg.parts,
+            });
             continue;
         }
-        const text = typeof msg.content === 'string'
-            ? msg.content
-            : '';
-
+        const text = typeof msg.content === 'string' ? msg.content : '';
         if (!text.trim()) continue;
-
-        if (role === 'system') {
+        if (rawRole === 'system') {
             systemParts.push({ text });
             continue;
         }
-
         contents.push({
-            role: role === 'model' ? 'model' : 'user',
+            role: rawRole === 'model' ? 'model' : 'user',
             parts: [{ text }],
         });
     }
 
-    return {
-        contents,
-        systemInstruction: systemParts.length ? { role: 'system', parts: systemParts } : undefined,
-    };
+    return { contents, systemParts };
 }
 
 function withTimeout(promise, ms, label) {
@@ -92,16 +100,37 @@ function unwrapJsonFence(text) {
 }
 
 function getSafetySettings() {
-    const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+    // @google/genai exposes enums under HarmCategory / HarmBlockThreshold (camelCase).
+    let HarmCategory, HarmBlockThreshold;
+    try {
+        ({ HarmCategory, HarmBlockThreshold } = require('@google/genai'));
+    } catch {
+        return undefined; // SDK version không có enums → bỏ qua
+    }
+    if (!HarmCategory || !HarmBlockThreshold) return undefined;
     return [
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
         HarmCategory.HARM_CATEGORY_HATE_SPEECH,
         HarmCategory.HARM_CATEGORY_HARASSMENT,
         HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-    ].map(category => ({
-        category,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-    }));
+    ]
+        .filter(Boolean)
+        .map(category => ({
+            category,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        }));
+}
+
+/**
+ * Extract text từ response của @google/genai v2.x.
+ *   - response.text (string accessor — preferred)
+ *   - response.candidates[0].content.parts[*].text fallback
+ */
+function extractText(response) {
+    if (!response) return '';
+    if (typeof response.text === 'string' && response.text.length) return response.text;
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    return parts.map(p => p.text || '').join('');
 }
 
 async function chat(messages, {
@@ -112,35 +141,31 @@ async function chat(messages, {
     maxOutputTokens = 2048,
 } = {}) {
     try {
-        const vertex = getVertexClient();
-        const converted = toGeminiContents(messages);
+        const ai = getClient();
+        const { contents, systemParts } = toGenAiContents(messages);
         const finalSystemInstruction = systemInstruction
-            ? { role: 'system', parts: [{ text: systemInstruction }] }
-            : converted.systemInstruction;
+            ? [{ text: systemInstruction }]
+            : (systemParts.length ? systemParts : undefined);
 
-        const generativeModel = vertex.getGenerativeModel({
-            model,
-            systemInstruction: finalSystemInstruction,
-            tools,
-            generationConfig: { temperature, maxOutputTokens },
-            safetySettings: getSafetySettings(),
-        });
+        const config = {
+            temperature,
+            maxOutputTokens,
+        };
+        if (finalSystemInstruction) config.systemInstruction = finalSystemInstruction;
+        const safety = getSafetySettings();
+        if (safety) config.safetySettings = safety;
+        if (tools) config.tools = tools;
 
         const result = await withTimeout(
-            generativeModel.generateContent({ contents: converted.contents }),
+            ai.models.generateContent({ model, contents, config }),
             REQUEST_TIMEOUT_MS,
             'Gemini'
         );
 
-        const response = result.response;
-        const text = typeof response.text === 'function'
-            ? response.text()
-            : response.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
-
         return {
-            text,
-            usage: response.usageMetadata || null,
-            raw: response,
+            text: extractText(result),
+            usage: result.usageMetadata || null,
+            raw: result,
         };
     } catch (error) {
         const err = new Error(error.message || 'Gemini request failed');

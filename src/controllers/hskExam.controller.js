@@ -7,6 +7,25 @@ const HskExamModel = require('../models/hskExam.model');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
 const examTemplate = require('../services/hsk-exam-template.service');
+const { resolveAudioUrl } = require('../services/audioUrl.service');
+
+/**
+ * Resolve audio URLs trong exam payload: section.audio_url + mỗi question.questionAudio.
+ * Mutates không sao vì objects vừa được serialize từ DB, không share reference.
+ */
+async function resolveExamAudio(payload) {
+    if (!payload?.sections) return payload;
+    for (const section of payload.sections) {
+        if (section.audio_url) section.audio_url = await resolveAudioUrl(section.audio_url);
+        if (Array.isArray(section.questions)) {
+            for (const q of section.questions) {
+                if (q.questionAudio) q.questionAudio = await resolveAudioUrl(q.questionAudio);
+                if (q.question_audio) q.question_audio = await resolveAudioUrl(q.question_audio);
+            }
+        }
+    }
+    return payload;
+}
 
 // ============================================================
 // ADMIN - EXAM MANAGEMENT
@@ -293,6 +312,7 @@ async function getExamAnswers(req, res) {
                 })),
             })),
         };
+        await resolveExamAudio(payload);
         res.json(payload);
     } catch (err) {
         console.error('Get exam answers error:', err);
@@ -387,6 +407,7 @@ async function startExam(req, res) {
             }))
         };
 
+        await resolveExamAudio(safeExam);
         res.json(safeExam);
     } catch (err) {
         console.error('Start exam error:', err);

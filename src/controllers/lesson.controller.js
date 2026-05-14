@@ -205,6 +205,20 @@ exports.getTextbookLesson = async (req, res) => {
         if (!payload) {
             return res.status(404).json({ success: false, message: 'Lesson not found' });
         }
+        // Resolve audio fields (gs:// → signed URL)
+        try {
+            const { resolveAudioUrl } = require('../services/audioUrl.service');
+            if (payload.lesson?.passage_audio_url) {
+                payload.lesson.passage_audio_url = await resolveAudioUrl(payload.lesson.passage_audio_url);
+            }
+            if (Array.isArray(payload.vocabulary)) {
+                for (const v of payload.vocabulary) {
+                    if (v.audio_url) v.audio_url = await resolveAudioUrl(v.audio_url);
+                }
+            }
+        } catch (e) {
+            console.warn('[lesson] resolve audio failed:', e.message);
+        }
         res.json({ success: true, data: payload });
     } catch (error) {
         console.error('Get textbook lesson error:', error);

@@ -45,7 +45,7 @@ async function getMasteryRatio(userId, hskLevel) {
         db.execute(
             `SELECT COUNT(DISTINCT v.id) AS mastered
                FROM vocabulary v
-               JOIN notebook_items ni ON (ni.vocab_id = v.id OR ni.vocabulary_id = v.id)
+               JOIN notebook_items ni ON ni.vocabulary_id = v.id
                JOIN notebooks n ON n.id = ni.notebook_id
               WHERE v.hsk_level = ?
                 AND n.user_id = ?

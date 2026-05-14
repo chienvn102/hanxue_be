@@ -249,7 +249,7 @@ async function findNotMasteredByUser(userId, hskLevel, limit = 10) {
                   FROM notebook_items ni
                   JOIN notebooks n ON n.id = ni.notebook_id
                  WHERE n.user_id = ?
-                   AND (ni.vocab_id = v.id OR ni.vocabulary_id = v.id)
+                   AND ni.vocabulary_id = v.id
                    AND ni.mastery_level = 'mastered'
             )
           ORDER BY RAND()

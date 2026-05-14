@@ -197,7 +197,7 @@ const Notebook = {
                    v.hsk_level, ni.mastery_level, n.name AS notebook_name
               FROM notebook_items ni
               JOIN notebooks n ON n.id = ni.notebook_id
-              JOIN vocabulary v ON (v.id = ni.vocab_id OR v.id = ni.vocabulary_id)
+              JOIN vocabulary v ON v.id = ni.vocabulary_id
              WHERE n.user_id = ?
                AND (
                     v.simplified LIKE ?

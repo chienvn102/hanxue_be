@@ -29,7 +29,14 @@ function publicUrl(bucketName, objectName) {
     return `${base.replace(/\/$/, '')}/${bucketName}/${encodeURI(objectName)}`;
 }
 
-async function uploadBuffer({ bucketName, objectName, buffer, contentType, publicRead = false }) {
+/**
+ * Upload buffer lên GCS. Bucket dùng uniform bucket-level access → KHÔNG được
+ * gọi object-level ACL (`makePublic`). Caller dùng `getSignedReadUrl` hoặc
+ * `audioUrl.service.resolveAudioUrl` khi cần phục vụ URL.
+ * Trả về reference `{ bucketName, objectName }` để controller lưu vào DB
+ * dưới dạng `gs://<bucket>/<object>`.
+ */
+async function uploadBuffer({ bucketName, objectName, buffer, contentType }) {
     if (!bucketName) {
         const err = new Error('GCS bucket is not configured');
         err.publicMessage = 'Kho luu tru media chua duoc cau hinh.';
@@ -43,18 +50,16 @@ async function uploadBuffer({ bucketName, objectName, buffer, contentType, publi
         resumable: false,
         metadata: {
             contentType: contentType || 'application/octet-stream',
-            cacheControl: 'public, max-age=31536000',
+            cacheControl: 'private, max-age=3600',
         },
     });
 
-    if (publicRead) {
-        await file.makePublic();
-    }
-
-    return publicUrl(bucketName, objectName);
+    return { bucketName, objectName };
 }
 
-async function getSignedReadUrl(bucketName, objectName, expiresMs = 1000 * 60 * 60) {
+const DEFAULT_SIGNED_URL_TTL_MS = parseInt(process.env.GCS_SIGNED_URL_TTL_MS || '86400000', 10);
+
+async function getSignedReadUrl(bucketName, objectName, expiresMs = DEFAULT_SIGNED_URL_TTL_MS) {
     const [url] = await getStorage()
         .bucket(bucketName)
         .file(objectName)
@@ -71,4 +76,5 @@ module.exports = {
     uploadBuffer,
     getSignedReadUrl,
     publicUrl,
+    DEFAULT_SIGNED_URL_TTL_MS,
 };

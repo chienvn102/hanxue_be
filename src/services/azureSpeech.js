@@ -1,15 +1,16 @@
 /**
- * DEPRECATED: Azure Speech Service.
+ * Azure Speech Service — ACTIVE for pronunciation assessment only.
  *
- * HanXue now uses cloudSpeech.service.js and cloudTts.service.js. This file is
- * kept only as a rollback shim during deployment verification.
+ * STT (`transcribe`) và TTS (`synthesize`) đã chuyển sang Cloud Speech /
+ * Cloud TTS (xem `cloudSpeech.service.js`, `cloudTts.service.js`).
  *
- * Wrapper for Azure Cognitive Services Speech SDK
- * Features: STT (transcribe), pronunciation assessment, TTS
+ * `assessPronunciation()` giữ lại Azure vì Google không có phoneme-level
+ * scoring native. Kết quả Azure được Gemini phân tích thêm để feedback chi
+ * tiết bằng tiếng Việt (xem `speech.controller.js`).
  *
- * Error convention (same as groq.js):
- *   - throw with { publicMessage, status } for controller
- *   - internal details in message (logs only)
+ * Error convention:
+ *   - throw with { publicMessage, status } cho controller
+ *   - internal details ở message (chỉ log)
  */
 
 let sdk;

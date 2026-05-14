@@ -303,11 +303,13 @@ async function getLearningProfile(userId) {
     if (!user) return null;
 
     const targetHsk = user.target_hsk || 1;
-    const [[masteredRows], [totalRows]] = await Promise.all([
+    // notebook_items dùng `vocabulary_id` là PK chuẩn (xem hanxue070526.sql:44814).
+    // `vocab_id` là legacy NULL — bỏ qua.
+    const [[masteredRows], [totalRows], [recentXpRows]] = await Promise.all([
         db.execute(
             `SELECT COUNT(DISTINCT v.id) AS mastered
                FROM vocabulary v
-               JOIN notebook_items ni ON (ni.vocab_id = v.id OR ni.vocabulary_id = v.id)
+               JOIN notebook_items ni ON ni.vocabulary_id = v.id
                JOIN notebooks n ON n.id = ni.notebook_id
               WHERE n.user_id = ?
                 AND v.hsk_level = ?
@@ -318,6 +320,16 @@ async function getLearningProfile(userId) {
             'SELECT COUNT(*) AS total FROM vocabulary WHERE hsk_level = ?',
             [targetHsk]
         ),
+        db.execute(
+            `SELECT COALESCE(SUM(amount), 0) AS xp7d
+               FROM xp_history
+              WHERE user_id = ?
+                AND created_at >= NOW() - INTERVAL 7 DAY`,
+            [userId]
+        ).catch(error => {
+            if (error.code === 'ER_NO_SUCH_TABLE') return [[{ xp7d: 0 }]];
+            throw error;
+        }),
     ]);
 
     return {
@@ -329,6 +341,7 @@ async function getLearningProfile(userId) {
         currentStreak: Number(user.current_streak || 0),
         longestStreak: Number(user.longest_streak || 0),
         totalXp: Number(user.total_xp || 0),
+        xp7d: Number(recentXpRows[0]?.xp7d || 0),
     };
 }
 

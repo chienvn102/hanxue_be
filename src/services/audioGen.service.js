@@ -4,19 +4,24 @@ const Lesson = require('../models/lesson.model');
 const HskExam = require('../models/hskExam.model');
 const cloudTts = require('./cloudTts.service');
 const gcs = require('./gcs.service');
+const { resolveAudioUrl } = require('./audioUrl.service');
 
 function normalizeText(text) {
     return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
-async function uploadAudio(prefix, filename, buffer) {
-    return gcs.uploadBuffer({
+/**
+ * Upload buffer rồi trả về `gs://bucket/object` reference cho DB.
+ * Caller dùng `resolveAudioUrl(...)` để lấy signed URL khi serve.
+ */
+async function uploadAudioToGcs(prefix, filename, buffer) {
+    const { bucketName, objectName } = await gcs.uploadBuffer({
         bucketName: gcs.getBucketName('audio'),
         objectName: `${prefix.replace(/^\/+|\/+$/g, '')}/${filename}`,
         buffer,
         contentType: buffer.contentType || 'audio/mpeg',
-        publicRead: process.env.GCS_UPLOAD_PUBLIC === 'true',
     });
+    return `gs://${bucketName}/${objectName}`;
 }
 
 async function genVocabAudio(vocabId) {
@@ -28,9 +33,10 @@ async function genVocabAudio(vocabId) {
     }
 
     const audio = await cloudTts.synthesize(vocab.simplified, { voice: 'female', speed: 0.9 });
-    const url = await uploadAudio('vocab', `${vocabId}.mp3`, audio);
-    await Vocab.update(vocabId, { audio_url: url });
-    return { url };
+    const gsUrl = await uploadAudioToGcs('vocab', `${vocabId}.mp3`, audio);
+    await Vocab.update(vocabId, { audio_url: gsUrl });
+    const signedUrl = await resolveAudioUrl(gsUrl);
+    return { url: signedUrl, gsUrl };
 }
 
 async function getHskQuestion(questionId) {
@@ -60,9 +66,10 @@ async function genHskListeningAudio(questionId) {
     }
 
     const audio = await cloudTts.synthesize(text, { voice: 'female', speed: 0.95 });
-    const url = await uploadAudio(`hsk/${question.exam_id}`, `${questionId}.mp3`, audio);
-    await HskExam.updateQuestion(questionId, { question_audio: url });
-    return { url };
+    const gsUrl = await uploadAudioToGcs(`hsk/${question.exam_id}`, `${questionId}.mp3`, audio);
+    await HskExam.updateQuestion(questionId, { question_audio: gsUrl });
+    const signedUrl = await resolveAudioUrl(gsUrl);
+    return { url: signedUrl, gsUrl };
 }
 
 async function genLessonAudio(lessonId) {
@@ -81,9 +88,10 @@ async function genLessonAudio(lessonId) {
     }
 
     const audio = await cloudTts.synthesize(text, { voice: 'female', speed: 0.9 });
-    const url = await uploadAudio(`lessons/${lessonId}`, 'passage.mp3', audio);
-    await db.execute('UPDATE lessons SET passage_audio_url = ? WHERE id = ?', [url, lessonId]);
-    return { url };
+    const gsUrl = await uploadAudioToGcs(`lessons/${lessonId}`, 'passage.mp3', audio);
+    await db.execute('UPDATE lessons SET passage_audio_url = ? WHERE id = ?', [gsUrl, lessonId]);
+    const signedUrl = await resolveAudioUrl(gsUrl);
+    return { url: signedUrl, gsUrl };
 }
 
 async function genExampleAudio(exampleId) {
@@ -102,14 +110,15 @@ async function genExampleAudio(exampleId) {
     }
 
     const audio = await cloudTts.synthesize(normalizeText(example.sentence_zh), { voice: 'female', speed: 0.9 });
-    const url = await uploadAudio('examples', `${exampleId}.mp3`, audio);
+    const gsUrl = await uploadAudioToGcs('examples', `${exampleId}.mp3`, audio);
     await db.execute(
         `UPDATE dictionary_examples
             SET audio_url = ?, audio_provider = 'manual'
           WHERE id = ?`,
-        [url, exampleId]
+        [gsUrl, exampleId]
     );
-    return { url };
+    const signedUrl = await resolveAudioUrl(gsUrl);
+    return { url: signedUrl, gsUrl };
 }
 
 module.exports = {
