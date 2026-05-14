@@ -76,3 +76,17 @@ exports.genExampleAudio = async (req, res) => {
 exports.genImage = async (req, res) => {
     enqueue(res, () => imagen.generateImage(req.body || {}));
 };
+
+/**
+ * POST /api/admin/gen-audio-text
+ * Body: { text: string, voice?: 'female'|'male', speed?: number }
+ * Dùng cho admin create flow (chưa có entity ID). Trả về job ID, poll
+ * /api/admin/jobs/:jobId để lấy `url` (signed URL) + `gsUrl` (lưu DB).
+ */
+exports.genTextAudio = async (req, res) => {
+    const { text, voice, speed } = req.body || {};
+    if (!text || typeof text !== 'string' || !text.trim()) {
+        return res.status(400).json({ success: false, message: 'Thiếu text.' });
+    }
+    enqueue(res, () => audioGen.genTextAudio(text, { voice, speed }));
+};

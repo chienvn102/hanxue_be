@@ -94,6 +94,31 @@ async function genLessonAudio(lessonId) {
     return { url: signedUrl, gsUrl };
 }
 
+/**
+ * Gen audio cho 1 string text (không cần entity ID — dùng cho create flow ở admin).
+ * Lưu vào path tạm `tts/<hash>.mp3` để cache + tránh đè nhau.
+ */
+async function genTextAudio(text, { voice = 'female', speed = 0.9 } = {}) {
+    const cleaned = normalizeText(text);
+    if (!cleaned) {
+        const err = new Error('Text is required for TTS');
+        err.status = 400;
+        throw err;
+    }
+    if (cleaned.length > 200) {
+        const err = new Error('Text quá dài (tối đa 200 ký tự)');
+        err.status = 400;
+        throw err;
+    }
+    // Hash text để cache: nếu admin tạo cùng 1 từ nhiều lần thì dùng lại object cũ
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha1').update(`${voice}|${speed}|${cleaned}`).digest('hex').slice(0, 16);
+    const audio = await cloudTts.synthesize(cleaned, { voice, speed });
+    const gsUrl = await uploadAudioToGcs('tts', `${hash}.mp3`, audio);
+    const signedUrl = await resolveAudioUrl(gsUrl);
+    return { url: signedUrl, gsUrl };
+}
+
 async function genExampleAudio(exampleId) {
     const [rows] = await db.execute(
         'SELECT id, sentence_zh FROM dictionary_examples WHERE id = ?',
@@ -126,4 +151,5 @@ module.exports = {
     genHskListeningAudio,
     genLessonAudio,
     genExampleAudio,
+    genTextAudio,
 };
