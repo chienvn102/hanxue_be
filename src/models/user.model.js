@@ -11,7 +11,9 @@ const db = require('../config/database');
 async function findByEmail(email) {
     const [rows] = await db.execute(
         `SELECT id, email, password_hash, display_name, role, is_active, google_id,
-                avatar_url, target_hsk, is_premium, email_verified
+                avatar_url, target_hsk, daily_goal_mins, preferred_voice,
+                native_language, is_premium, email_verified, password_set_at,
+                profile_completed_at
          FROM users WHERE email = ?`,
         [email]
     );
@@ -24,7 +26,8 @@ async function findByEmail(email) {
 async function findByEmailForLogin(email) {
     const [rows] = await db.execute(
         `SELECT id, email, password_hash, display_name, role, is_active,
-                target_hsk, is_premium
+                target_hsk, is_premium, google_id, email_verified,
+                password_set_at, profile_completed_at
          FROM users WHERE email = ?`,
         [email]
     );
@@ -37,7 +40,8 @@ async function findByEmailForLogin(email) {
 async function findByIdForAuth(id) {
     const [rows] = await db.execute(
         `SELECT id, email, display_name, role, is_active, target_hsk,
-                is_premium, google_id, avatar_url, email_verified
+                is_premium, google_id, avatar_url, email_verified,
+                password_set_at, profile_completed_at
          FROM users WHERE id = ?`,
         [id]
     );
@@ -49,7 +53,9 @@ async function findByIdForAuth(id) {
  */
 async function findById(id) {
     const [rows] = await db.execute(
-        `SELECT id, email, display_name, avatar_url, role, is_active, target_hsk, 
+        `SELECT id, email, display_name, avatar_url, role, is_active, target_hsk,
+                daily_goal_mins, preferred_voice, google_id, email_verified,
+                password_set_at, profile_completed_at,
                 total_xp, current_streak, longest_streak, total_study_days, 
                 last_study_date, native_language, is_premium, created_at
          FROM users WHERE id = ?`,
@@ -78,21 +84,25 @@ async function create({
     displayName,
     googleId = null,
     avatarUrl = null,
-    emailVerified = false
+    emailVerified = false,
+    passwordSet = true,
+    profileCompleted = true
 }) {
     const [result] = await db.execute(
         `INSERT INTO users (
             email, password_hash, display_name, google_id, avatar_url,
-            email_verified, created_at
+            email_verified, password_set_at, profile_completed_at, created_at
         )
-         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
             email,
             passwordHash,
             displayName || email.split('@')[0],
             googleId,
             avatarUrl,
-            emailVerified ? 1 : 0
+            emailVerified ? 1 : 0,
+            passwordSet ? new Date() : null,
+            profileCompleted ? new Date() : null
         ]
     );
     return result.insertId;
@@ -124,7 +134,8 @@ async function clearRefreshToken(userId) {
 async function findByGoogleId(googleId) {
     const [rows] = await db.execute(
         `SELECT id, email, display_name, avatar_url, role, is_active,
-                target_hsk, is_premium, google_id, email_verified
+                target_hsk, is_premium, google_id, email_verified,
+                password_set_at, profile_completed_at
          FROM users WHERE google_id = ?`,
         [googleId]
     );
@@ -162,7 +173,14 @@ async function linkGoogleAccount(userId, { googleId, avatarUrl, displayName, ema
 /**
  * Update user profile
  */
-async function updateProfile(userId, { displayName, targetHsk, nativeLanguage }) {
+async function updateProfile(userId, {
+    displayName,
+    targetHsk,
+    nativeLanguage,
+    dailyGoalMins,
+    preferredVoice,
+    avatarUrl
+}) {
     const params = [];
     let sql = 'UPDATE users SET ';
 
@@ -177,6 +195,18 @@ async function updateProfile(userId, { displayName, targetHsk, nativeLanguage })
     if (nativeLanguage !== undefined) {
         sql += 'native_language = ?, ';
         params.push(nativeLanguage);
+    }
+    if (dailyGoalMins !== undefined) {
+        sql += 'daily_goal_mins = ?, ';
+        params.push(dailyGoalMins);
+    }
+    if (preferredVoice !== undefined) {
+        sql += 'preferred_voice = ?, ';
+        params.push(preferredVoice);
+    }
+    if (avatarUrl !== undefined) {
+        sql += 'avatar_url = ?, ';
+        params.push(avatarUrl);
     }
 
     if (params.length === 0) return false;
@@ -195,7 +225,9 @@ async function updateProfile(userId, { displayName, targetHsk, nativeLanguage })
  */
 async function findByIdWithPassword(id) {
     const [rows] = await db.execute(
-        'SELECT id, password_hash FROM users WHERE id = ?',
+        `SELECT id, email, password_hash, is_active, password_set_at,
+                profile_completed_at
+         FROM users WHERE id = ?`,
         [id]
     );
     return rows[0] || null;
@@ -206,8 +238,45 @@ async function findByIdWithPassword(id) {
  */
 async function updatePassword(userId, newHash) {
     await db.execute(
-        'UPDATE users SET password_hash = ? WHERE id = ?',
+        'UPDATE users SET password_hash = ?, password_set_at = NOW() WHERE id = ?',
         [newHash, userId]
+    );
+}
+
+/**
+ * Complete first-login onboarding
+ */
+async function completeOnboarding(userId, {
+    passwordHash,
+    displayName,
+    targetHsk,
+    nativeLanguage,
+    dailyGoalMins,
+    preferredVoice,
+    avatarUrl
+}) {
+    await db.execute(
+        `UPDATE users
+         SET password_hash = ?,
+             password_set_at = NOW(),
+             profile_completed_at = NOW(),
+             display_name = ?,
+             target_hsk = ?,
+             native_language = ?,
+             daily_goal_mins = ?,
+             preferred_voice = ?,
+             avatar_url = COALESCE(?, avatar_url)
+         WHERE id = ?`,
+        [
+            passwordHash,
+            displayName,
+            targetHsk,
+            nativeLanguage,
+            dailyGoalMins,
+            preferredVoice,
+            avatarUrl || null,
+            userId
+        ]
     );
 }
 
@@ -224,5 +293,6 @@ module.exports = {
     linkGoogleAccount,
     updateProfile,
     findByIdWithPassword,
-    updatePassword
+    updatePassword,
+    completeOnboarding
 };

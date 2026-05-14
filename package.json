@@ -6,6 +6,7 @@
     "scripts": {
         "dev": "nodemon src/index.js",
         "start": "node src/index.js",
+        "verify:email": "node scripts/verify-email-transport.js",
         "test": "jest"
     },
     "dependencies": {

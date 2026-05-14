@@ -8,12 +8,12 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const UserModel = require('../models/user.model');
-const PasswordResetCodeModel = require('../models/passwordResetCode.model');
-const { sendPasswordResetCode } = require('../services/email.service');
+const {
+    createAndSendPasswordCode,
+    verifyPasswordCode
+} = require('../services/passwordCode.service');
 
 const googleClient = new OAuth2Client();
-const PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
-const MAX_PASSWORD_RESET_ATTEMPTS = 5;
 const GENERIC_RESET_MESSAGE = 'If an account exists, a reset code has been sent.';
 
 function normalizeEmail(email) {
@@ -43,13 +43,21 @@ function createRefreshToken(user) {
 }
 
 function toAuthUser(user) {
+    const hasPassword = !!user.password_set_at;
+    const profileCompleted = !!user.profile_completed_at;
+
     return {
         id: user.id,
         email: user.email,
         displayName: user.display_name,
         role: user.role,
         targetHsk: user.target_hsk,
-        isPremium: !!user.is_premium
+        isPremium: !!user.is_premium,
+        hasPassword,
+        profileCompleted,
+        requiresOnboarding: !hasPassword || !profileCompleted,
+        emailVerified: !!user.email_verified,
+        googleLinked: !!user.google_id
     };
 }
 
@@ -103,10 +111,6 @@ async function verifyGoogleCredential(credential) {
         displayName: payload.name || payload.email.split('@')[0],
         avatarUrl: payload.picture || null
     };
-}
-
-function generateResetCode() {
-    return crypto.randomInt(100000, 1000000).toString();
 }
 
 /**
@@ -218,7 +222,9 @@ async function googleLogin(req, res) {
                     displayName: googleUser.displayName,
                     googleId: googleUser.googleId,
                     avatarUrl: googleUser.avatarUrl,
-                    emailVerified: true
+                    emailVerified: true,
+                    passwordSet: false,
+                    profileCompleted: false
                 });
                 user = await UserModel.findByIdForAuth(userId);
             }
@@ -255,14 +261,8 @@ async function forgotPassword(req, res) {
         const user = await UserModel.findByEmail(email);
 
         if (user && user.is_active) {
-            const code = generateResetCode();
-            const codeHash = await bcrypt.hash(code, 10);
-            const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
-
             try {
-                await PasswordResetCodeModel.consumeActiveForUser(user.id);
-                await PasswordResetCodeModel.create({ userId: user.id, codeHash, expiresAt });
-                await sendPasswordResetCode(email, code);
+                await createAndSendPasswordCode(user, 'password_reset');
             } catch (err) {
                 console.error('Password reset email error:', err.message);
             }
@@ -296,26 +296,14 @@ async function resetPassword(req, res) {
             return res.status(400).json({ error: 'Invalid or expired reset code' });
         }
 
-        const resetCode = await PasswordResetCodeModel.findLatestActiveByUserId(user.id);
-        if (!resetCode) {
-            return res.status(400).json({ error: 'Invalid or expired reset code' });
-        }
-
-        if (resetCode.attempts >= MAX_PASSWORD_RESET_ATTEMPTS) {
-            await PasswordResetCodeModel.markConsumed(resetCode.id);
-            return res.status(400).json({ error: 'Invalid or expired reset code' });
-        }
-
-        const valid = await bcrypt.compare(code, resetCode.code_hash);
-        if (!valid) {
-            await PasswordResetCodeModel.incrementAttempts(resetCode.id);
+        const codeResult = await verifyPasswordCode(user.id, code, 'password_reset');
+        if (!codeResult.valid) {
             return res.status(400).json({ error: 'Invalid or expired reset code' });
         }
 
         const passwordHash = await bcrypt.hash(newPassword, 10);
         await UserModel.updatePassword(user.id, passwordHash);
         await UserModel.clearRefreshToken(user.id);
-        await PasswordResetCodeModel.markConsumed(resetCode.id);
 
         res.json({ message: 'Password reset successfully' });
     } catch (err) {
@@ -381,10 +369,18 @@ async function me(req, res) {
             displayName: user.display_name,
             avatarUrl: user.avatar_url,
             targetHsk: user.target_hsk,
+            dailyGoalMins: user.daily_goal_mins,
+            preferredVoice: user.preferred_voice,
+            nativeLanguage: user.native_language,
             totalXp: user.total_xp,
             currentStreak: user.current_streak,
             isPremium: user.is_premium,
-            createdAt: user.created_at
+            createdAt: user.created_at,
+            hasPassword: !!user.password_set_at,
+            profileCompleted: !!user.profile_completed_at,
+            requiresOnboarding: !user.password_set_at || !user.profile_completed_at,
+            emailVerified: !!user.email_verified,
+            googleLinked: !!user.google_id
         });
     } catch (err) {
         console.error('Get me error:', err);
