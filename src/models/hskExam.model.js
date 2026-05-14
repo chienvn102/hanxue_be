@@ -152,6 +152,7 @@ async function createSection(data) {
 }
 
 async function updateSection(id, data) {
+    const { normalizeAudioRef } = require('../services/audioUrl.service');
     const allowedFields = ['section_type', 'section_order', 'title', 'instructions', 'duration_seconds', 'audio_url'];
     const updates = [];
     const values = [];
@@ -159,7 +160,11 @@ async function updateSection(id, data) {
     for (const field of allowedFields) {
         if (data[field] !== undefined) {
             updates.push(`${field} = ?`);
-            values.push(data[field]);
+            if (field === 'audio_url') {
+                values.push(normalizeAudioRef(data[field]));
+            } else {
+                values.push(data[field]);
+            }
         }
     }
 
@@ -303,6 +308,7 @@ async function createQuestion(data) {
 }
 
 async function updateQuestion(id, data) {
+    const { normalizeAudioRef } = require('../services/audioUrl.service');
     const allowedFields = [
         'group_id', 'question_number', 'question_type',
         'question_text', 'passage', 'statement',
@@ -318,6 +324,8 @@ async function updateQuestion(id, data) {
             updates.push(`${field} = ?`);
             if (['options', 'option_images', 'meta'].includes(field) && data[field] !== null && typeof data[field] === 'object') {
                 values.push(JSON.stringify(data[field]));
+            } else if (field === 'question_audio') {
+                values.push(normalizeAudioRef(data[field]));
             } else {
                 values.push(data[field]);
             }

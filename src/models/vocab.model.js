@@ -4,6 +4,7 @@
  */
 
 const db = require('../config/database');
+const { normalizeAudioRef } = require('../services/audioUrl.service');
 
 /**
  * Get paginated vocabulary list with optional filters
@@ -185,7 +186,8 @@ async function create(data) {
             meaning_en || null,
             hsk_level || 1,
             word_type || null,
-            audio_url || null,
+            // Normalize: signed/public GCS URL → gs:// để khỏi vượt VARCHAR limit
+            normalizeAudioRef(audio_url) || null,
             frequency_rank || 99999,
             examples && Array.isArray(examples) && examples.length > 0 ? JSON.stringify(examples) : null
         ]
@@ -211,6 +213,9 @@ async function update(id, data) {
             updates.push(`${field} = ?`);
             if (field === 'examples' && typeof data[field] === 'object') {
                 values.push(JSON.stringify(data[field]));
+            } else if (field === 'audio_url') {
+                // Normalize signed URL → gs:// để khỏi vượt VARCHAR limit
+                values.push(normalizeAudioRef(data[field]));
             } else {
                 values.push(data[field]);
             }

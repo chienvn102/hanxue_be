@@ -307,9 +307,14 @@ exports.updateTextbookLesson = async (req, res) => {
             'title', 'description', 'passage_zh', 'passage_pinyin', 'passage_vi',
             'objectives_vi', 'hsk_level', 'order_index', 'is_active', 'passage_audio_url',
         ];
+        const { normalizeAudioRef } = require('../services/audioUrl.service');
         const update = {};
         for (const k of allowed) {
-            if (Object.prototype.hasOwnProperty.call(req.body, k)) update[k] = req.body[k];
+            if (Object.prototype.hasOwnProperty.call(req.body, k)) {
+                update[k] = k === 'passage_audio_url'
+                    ? normalizeAudioRef(req.body[k])
+                    : req.body[k];
+            }
         }
         if (Object.keys(update).length === 0) {
             return res.status(400).json({ success: false, message: 'No updatable fields' });
