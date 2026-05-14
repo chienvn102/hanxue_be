@@ -77,6 +77,14 @@ function getTransporter() {
     throw new Error('Gmail OAuth2 or app password credentials are not configured');
 }
 
+function getEmailProvider() {
+    return String(process.env.EMAIL_PROVIDER || (process.env.RESEND_API_KEY ? 'resend' : 'smtp')).toLowerCase();
+}
+
+function getFromAddress() {
+    return process.env.RESEND_FROM || process.env.MAIL_FROM || `HanXue <${process.env.GMAIL_USER}>`;
+}
+
 function getPasswordCodeContent(purpose) {
     if (purpose === 'password_change') {
         return {
@@ -91,13 +99,58 @@ function getPasswordCodeContent(purpose) {
     };
 }
 
-async function sendPasswordCode(to, code, purpose = 'password_reset') {
+async function sendSmtpEmail({ to, subject, text, html }) {
     const transporter = getTransporter();
-    const from = process.env.MAIL_FROM || `HanXue <${process.env.GMAIL_USER}>`;
-    const content = getPasswordCodeContent(purpose);
+    const from = getFromAddress();
 
     await transporter.sendMail({
         from,
+        to,
+        subject,
+        text,
+        html
+    });
+}
+
+async function sendResendEmail({ to, subject, text, html }) {
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = getFromAddress();
+    const apiUrl = process.env.RESEND_API_URL || 'https://api.resend.com/emails';
+
+    if (!apiKey) {
+        throw new Error('RESEND_API_KEY is not configured');
+    }
+
+    if (!from || from.includes('<undefined>')) {
+        throw new Error('MAIL_FROM or RESEND_FROM is not configured');
+    }
+
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            from,
+            to,
+            subject,
+            text,
+            html
+        })
+    });
+
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || body.error || `Resend API failed with HTTP ${response.status}`);
+    }
+
+    return response.json();
+}
+
+async function sendPasswordCode(to, code, purpose = 'password_reset') {
+    const content = getPasswordCodeContent(purpose);
+    const message = {
         to,
         subject: content.subject,
         text: [
@@ -114,7 +167,14 @@ async function sendPasswordCode(to, code, purpose = 'password_reset') {
                 <p>This code expires in 10 minutes. If you did not request it, ignore this email.</p>
             </div>
         `
-    });
+    };
+
+    if (getEmailProvider() === 'resend') {
+        await sendResendEmail(message);
+        return;
+    }
+
+    await sendSmtpEmail(message);
 }
 
 async function sendPasswordResetCode(to, code) {
@@ -122,8 +182,40 @@ async function sendPasswordResetCode(to, code) {
 }
 
 async function verifyEmailTransport() {
+    if (getEmailProvider() === 'resend') {
+        if (!process.env.RESEND_API_KEY) {
+            throw new Error('RESEND_API_KEY is not configured');
+        }
+
+        if (!process.env.RESEND_FROM && !process.env.MAIL_FROM) {
+            throw new Error('RESEND_FROM or MAIL_FROM is not configured');
+        }
+
+        if (process.env.RESEND_VERIFY_SEND_TO) {
+            await sendResendEmail({
+                to: process.env.RESEND_VERIFY_SEND_TO,
+                subject: 'HanXue email verification test',
+                text: 'HanXue Resend email configuration is working.',
+                html: '<p>HanXue Resend email configuration is working.</p>'
+            });
+            return {
+                provider: 'resend',
+                message: `Resend test email sent to ${process.env.RESEND_VERIFY_SEND_TO}`
+            };
+        }
+
+        return {
+            provider: 'resend',
+            message: 'Resend configuration present. Set RESEND_VERIFY_SEND_TO to send a real test email.'
+        };
+    }
+
     const transporter = getTransporter();
     await transporter.verify();
+    return {
+        provider: 'smtp',
+        message: 'SMTP transport verified'
+    };
 }
 
 module.exports = {
