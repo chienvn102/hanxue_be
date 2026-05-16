@@ -4,6 +4,23 @@
  */
 
 const GrammarModel = require('../models/grammar.model');
+const db = require('../config/database');
+
+function validateGrammarPayload(body, { partial = false } = {}) {
+    const errors = [];
+    const isStr = (v) => typeof v === 'string' && v.trim();
+    if (!partial || body.grammar_point !== undefined) {
+        if (!isStr(body.grammar_point) && !isStr(body.title)) errors.push('grammar_point (hoặc title)');
+    }
+    if (!partial || body.explanation !== undefined) {
+        if (!isStr(body.explanation) && !isStr(body.explanation_vi)) errors.push('explanation');
+    }
+    if (body.hsk_level !== undefined && body.hsk_level !== null && body.hsk_level !== '') {
+        const lvl = parseInt(body.hsk_level, 10);
+        if (!Number.isFinite(lvl) || lvl < 1 || lvl > 6) errors.push('hsk_level (phải 1-6)');
+    }
+    return errors;
+}
 
 /**
  * Format grammar row to API response
@@ -92,6 +109,10 @@ async function getById(req, res) {
  */
 async function create(req, res) {
     try {
+        const errors = validateGrammarPayload(req.body);
+        if (errors.length) {
+            return res.status(400).json({ success: false, message: `Thiếu/sai trường: ${errors.join(', ')}` });
+        }
         const id = await GrammarModel.create(req.body);
         const grammar = await GrammarModel.getById(id);
         res.status(201).json({ success: true, data: formatGrammar(grammar) });
@@ -106,9 +127,15 @@ async function create(req, res) {
  */
 async function update(req, res) {
     try {
+        const errors = validateGrammarPayload(req.body, { partial: true });
+        if (errors.length) {
+            return res.status(400).json({ success: false, message: `Trường không hợp lệ: ${errors.join(', ')}` });
+        }
         const affected = await GrammarModel.update(req.params.id, req.body);
         if (affected === 0) {
-            return res.status(404).json({ success: false, message: 'Grammar not found or no changes made' });
+            const grammar = await GrammarModel.getById(req.params.id);
+            if (!grammar) return res.status(404).json({ success: false, message: 'Grammar not found' });
+            return res.json({ success: true, data: formatGrammar(grammar), info: 'No changes' });
         }
         const grammar = await GrammarModel.getById(req.params.id);
         res.json({ success: true, data: formatGrammar(grammar) });
@@ -123,6 +150,23 @@ async function update(req, res) {
  */
 async function deleteGrammar(req, res) {
     try {
+        let lessonRefCount = 0;
+        try {
+            const [[row]] = await db.execute(
+                'SELECT COUNT(*) AS cnt FROM lesson_grammar WHERE grammar_id = ?',
+                [req.params.id]
+            );
+            lessonRefCount = row?.cnt || 0;
+        } catch (e) {
+            if (e.code !== 'ER_NO_SUCH_TABLE') throw e;
+        }
+        if (lessonRefCount > 0) {
+            return res.status(409).json({
+                success: false,
+                code: 'GRAMMAR_IN_USE',
+                message: `Mẫu ngữ pháp đang được dùng ở ${lessonRefCount} bài học. Hãy gỡ liên kết trước.`,
+            });
+        }
         const affected = await GrammarModel.deleteById(req.params.id);
         if (affected === 0) {
             return res.status(404).json({ success: false, message: 'Grammar not found' });

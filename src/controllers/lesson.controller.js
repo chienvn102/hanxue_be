@@ -57,8 +57,21 @@ exports.getLessonDetails = async (req, res) => {
 // Admin: Create Lesson
 exports.createLesson = async (req, res) => {
     try {
+        if (!req.body?.course_id) {
+            return res.status(400).json({ success: false, message: 'Thiếu course_id' });
+        }
+        if (!req.body?.title || typeof req.body.title !== 'string' || !req.body.title.trim()) {
+            return res.status(400).json({ success: false, message: 'Thiếu title' });
+        }
+        const [[course]] = await db.execute(
+            'SELECT id FROM courses WHERE id = ? AND is_active = TRUE LIMIT 1',
+            [req.body.course_id]
+        );
+        if (!course) {
+            return res.status(400).json({ success: false, message: `course_id ${req.body.course_id} không tồn tại hoặc đã ẩn` });
+        }
         const id = await Lesson.create(req.body);
-        if (req.body?.course_id && req.body?.is_active !== false) {
+        if (req.body?.is_active !== false) {
             try {
                 await Course.reopenCompletionsForCourse(req.body.course_id);
                 const pushService = require('../services/push.service');

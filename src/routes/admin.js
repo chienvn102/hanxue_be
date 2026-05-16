@@ -3,6 +3,7 @@ const router = express.Router();
 const adminAuthController = require('../controllers/adminAuth.controller');
 const adminMiddleware = require('../middleware/admin.middleware');
 const audioGenController = require('../controllers/audioGen.controller');
+const adminUserController = require('../controllers/adminUser.controller');
 
 // Public admin routes
 router.post('/login', adminAuthController.login);
@@ -10,6 +11,8 @@ router.post('/login', adminAuthController.login);
 // Protected admin routes
 router.get('/me', adminMiddleware, adminAuthController.getMe);
 router.get('/stats', adminMiddleware, adminAuthController.getStats);
+router.get('/users', adminMiddleware, adminUserController.listUsers);
+router.get('/users/stats', adminMiddleware, adminUserController.getUserStats);
 router.get('/jobs/:jobId', adminMiddleware, audioGenController.getJob);
 router.post('/vocab/:id/gen-audio', adminMiddleware, audioGenController.genVocabAudio);
 router.post('/gen-audio-text', adminMiddleware, audioGenController.genTextAudio);

@@ -4,6 +4,7 @@
  */
 
 const VocabModel = require('../models/vocab.model');
+const db = require('../config/database');
 const { resolveAudioUrl } = require('../services/audioUrl.service');
 
 /**
@@ -303,7 +304,37 @@ async function update(req, res) {
  */
 async function deleteVocab(req, res) {
     try {
-        const affected = await VocabModel.deleteById(req.params.id);
+        // Đếm reference từ 3 nguồn — bảng nào không tồn tại thì coi như 0.
+        async function safeCount(sql, params) {
+            try {
+                const [[row]] = await db.execute(sql, params);
+                return Number(row?.cnt || 0);
+            } catch (e) {
+                if (e.code === 'ER_NO_SUCH_TABLE') return 0;
+                throw e;
+            }
+        }
+        const id = req.params.id;
+        const [notebookCnt, flashcardCnt, lessonCnt] = await Promise.all([
+            safeCount('SELECT COUNT(*) AS cnt FROM notebook_items WHERE vocabulary_id = ?', [id]),
+            safeCount('SELECT COUNT(*) AS cnt FROM flashcard_deck_items WHERE vocab_id = ?', [id]),
+            safeCount('SELECT COUNT(*) AS cnt FROM lesson_vocabulary WHERE vocabulary_id = ?', [id]),
+        ]);
+        const total = notebookCnt + flashcardCnt + lessonCnt;
+        if (total > 0) {
+            const parts = [];
+            if (notebookCnt) parts.push(`${notebookCnt} sổ tay`);
+            if (flashcardCnt) parts.push(`${flashcardCnt} flashcard`);
+            if (lessonCnt) parts.push(`${lessonCnt} bài học`);
+            return res.status(409).json({
+                success: false,
+                code: 'VOCAB_IN_USE',
+                message: `Từ vựng đang được dùng ở: ${parts.join(', ')}. Không thể xóa.`,
+                data: { notebookCnt, flashcardCnt, lessonCnt },
+            });
+        }
+
+        const affected = await VocabModel.deleteById(id);
         if (affected === 0) {
             return res.status(404).json({ success: false, message: 'Vocabulary not found' });
         }
