@@ -44,6 +44,73 @@ function genSessionToken() {
     return crypto.randomBytes(16).toString('hex'); // 32 hex chars
 }
 
+// =====================================================================
+// Translate grading — sanitize AI-returned breakdown shape so we never
+// pass through arbitrary keys. Anything missing/malformed → safe defaults.
+// =====================================================================
+
+function clampScore(raw) {
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, n));
+}
+
+function sanitizeAxis(axis, listKey) {
+    if (!axis || typeof axis !== 'object') {
+        return { score: 0, commentVi: '', [listKey]: [] };
+    }
+    const out = {
+        score: clampScore(axis.score),
+        commentVi: typeof axis.comment_vi === 'string' ? axis.comment_vi.trim() : '',
+    };
+    const list = Array.isArray(axis[listKey]) ? axis[listKey] : [];
+    out[listKey] = list.slice(0, 6).map(item => {
+        if (!item || typeof item !== 'object') return null;
+        if (listKey === 'issues') {
+            return {
+                type: typeof item.type === 'string' ? item.type.slice(0, 40) : 'other',
+                found: typeof item.found === 'string' ? item.found.slice(0, 120) : '',
+                shouldBe: typeof item.should_be === 'string' ? item.should_be.slice(0, 120) : '',
+                explanationVi: typeof item.explanation_vi === 'string' ? item.explanation_vi.trim().slice(0, 240) : '',
+            };
+        }
+        // suggestions
+        return {
+            yourWord: typeof item.your_word === 'string' ? item.your_word.slice(0, 40) : '',
+            betterWord: typeof item.better_word === 'string' ? item.better_word.slice(0, 40) : '',
+            reasonVi: typeof item.reason_vi === 'string' ? item.reason_vi.trim().slice(0, 240) : '',
+        };
+    }).filter(Boolean);
+    return out;
+}
+
+function sanitizeBreakdown(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+        meaningAccuracy: {
+            score: clampScore(raw.meaning_accuracy?.score),
+            commentVi: typeof raw.meaning_accuracy?.comment_vi === 'string' ? raw.meaning_accuracy.comment_vi.trim() : '',
+        },
+        grammar: sanitizeAxis(raw.grammar, 'issues'),
+        vocabulary: sanitizeAxis(raw.vocabulary, 'suggestions'),
+        fluency: {
+            score: clampScore(raw.fluency?.score),
+            commentVi: typeof raw.fluency?.comment_vi === 'string' ? raw.fluency.comment_vi.trim() : '',
+        },
+    };
+}
+
+function sanitizeHighlights(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.slice(0, 6).map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const type = item.type === 'good' || item.type === 'warn' ? item.type : 'good';
+        const text = typeof item.text_vi === 'string' ? item.text_vi.trim().slice(0, 200) : '';
+        if (!text) return null;
+        return { type, textVi: text };
+    }).filter(Boolean);
+}
+
 function purgeExpired(store) {
     const now = Date.now();
     for (const [k, v] of store) {
@@ -367,10 +434,34 @@ async function translateGrade(req, res) {
             {
                 role: 'system',
                 content:
-                    'Bạn là giáo viên chấm bài dịch tiếng Trung. Đánh giá bản dịch của học viên ' +
-                    'dựa trên: đúng nghĩa + ngữ pháp + dùng từ phù hợp. Trả về CHỈ một JSON object ' +
-                    '(không markdown), với key: "score" (số nguyên 0-100), "feedback_vi" (nhận xét ngắn ' +
-                    'tiếng Việt 1-2 câu), "correct_zh" (bản dịch chính xác/được khuyên dùng).'
+                    `Bạn là giáo viên dạy tiếng Trung cho người Việt (trình độ HSK ${session.hsk || 1}). ` +
+                    'Chấm bài dịch theo 4 trục — mỗi trục có điểm 0-100 và phân tích cụ thể:\n' +
+                    '- meaning_accuracy: bản dịch truyền tải đúng ý câu gốc tiếng Việt không\n' +
+                    '- grammar: cấu trúc câu, trật tự từ, từ loại, trợ từ\n' +
+                    '- vocabulary: dùng từ phù hợp HSK, có từ nào nên thay tốt hơn\n' +
+                    '- fluency: câu có tự nhiên không, có quá cứng/dài/lặp không\n\n' +
+                    'NGUYÊN TẮC:\n' +
+                    '- KHÔNG bịa lỗi nếu câu đã đúng. Nếu trục đó hoàn hảo, issues/suggestions là mảng rỗng.\n' +
+                    '- KHÔNG nhận xét chung chung như "cần luyện thêm". Phải chỉ rõ chỗ sai cụ thể.\n' +
+                    '- Với mỗi lỗi grammar: chỉ ra "found" (đoạn sai trong câu học viên), "should_be" (nên viết thế nào), "explanation_vi" (1 câu giải thích vì sao).\n' +
+                    '- Với mỗi từ có thể thay tốt hơn: "your_word", "better_word", "reason_vi" (1 câu).\n' +
+                    '- highlights là 2-4 điểm nổi bật: "good" cho điểm tốt, "warn" cho điểm sai trọng yếu.\n' +
+                    '- overall_score là điểm tổng 0-100 dựa trên 4 trục (không cần trung bình cộng cứng — weight theo mức độ nghiêm trọng lỗi).\n\n' +
+                    'Trả về CHỈ JSON object (không markdown, không fence) theo schema:\n' +
+                    '{\n' +
+                    '  "overall_score": <0-100>,\n' +
+                    '  "breakdown": {\n' +
+                    '    "meaning_accuracy": { "score": <0-100>, "comment_vi": "..." },\n' +
+                    '    "grammar": { "score": <0-100>, "issues": [ { "type": "word_order|missing_word|particle|tense|...", "found": "...", "should_be": "...", "explanation_vi": "..." } ] },\n' +
+                    '    "vocabulary": { "score": <0-100>, "suggestions": [ { "your_word": "...", "better_word": "...", "reason_vi": "..." } ] },\n' +
+                    '    "fluency": { "score": <0-100>, "comment_vi": "..." }\n' +
+                    '  },\n' +
+                    '  "highlights": [ { "type": "good|warn", "text_vi": "..." } ],\n' +
+                    '  "feedback_vi": "Tổng kết 1-2 câu tiếng Việt cho học viên",\n' +
+                    '  "correct_zh": "...",\n' +
+                    '  "correct_pinyin": "...",\n' +
+                    '  "next_practice_hint_vi": "Gợi ý 1 mẫu câu / pattern nên luyện tiếp"\n' +
+                    '}'
             },
             {
                 role: 'user',
@@ -378,7 +469,7 @@ async function translateGrade(req, res) {
                     `Câu gốc tiếng Việt: "${session.vi}"\n` +
                     `Bản dịch mẫu: "${session.expectedZh}"\n` +
                     `Bản dịch của học viên: "${userZh}"\n\n` +
-                    `Hãy chấm điểm.`
+                    `Chấm bài.`
             }
         ];
 
@@ -393,10 +484,16 @@ async function translateGrade(req, res) {
 
         try { await ChatModel.incrementDailyAiChat(req.user.userId); } catch {}
 
-        const scoreNum = Number.parseInt(parsed.score, 10);
+        // overall_score is the new canonical field; fall back to legacy "score" if missing.
+        const rawScore = parsed.overall_score ?? parsed.score;
+        const scoreNum = Number.parseInt(rawScore, 10);
         const score = Number.isFinite(scoreNum) ? Math.max(0, Math.min(100, scoreNum)) : 0;
         const feedbackVi = parsed.feedback_vi ? String(parsed.feedback_vi).trim() : '';
         const correctZh = parsed.correct_zh ? String(parsed.correct_zh).trim() : session.expectedZh;
+        const correctPinyin = parsed.correct_pinyin ? String(parsed.correct_pinyin).trim() : (session.expectedPinyin || '');
+        const nextHintVi = parsed.next_practice_hint_vi ? String(parsed.next_practice_hint_vi).trim() : '';
+        const breakdown = sanitizeBreakdown(parsed.breakdown);
+        const highlights = sanitizeHighlights(parsed.highlights);
 
         // XP rules — không persist history per Q6
         const xp = xpService.calculateAmount('practice_translate', { score });
@@ -425,7 +522,11 @@ async function translateGrade(req, res) {
                 feedbackVi,
                 correctZh,
                 expectedPinyin: session.expectedPinyin,
+                correctPinyin,
                 xpEarned: xp,
+                breakdown,
+                highlights,
+                nextPracticeHintVi: nextHintVi,
             }
         });
     } catch (error) {

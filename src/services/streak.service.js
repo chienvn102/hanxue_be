@@ -6,6 +6,11 @@
 
 const db = require('../config/database');
 const xpService = require('./xp.service');
+const pushService = require('./push.service');
+const activityLog = require('./activityLog.service');
+const achievementsService = require('./achievements.service');
+
+const STREAK_MILESTONES = new Set([3, 7, 14, 30, 50, 100, 200, 365]);
 
 /**
  * Update user streak after study activity
@@ -76,6 +81,29 @@ async function updateStreak(userId) {
              WHERE id = ?`,
             [newStreak, newLongest, newTotalDays, userId]
         );
+
+        // Milestone — fire-and-forget side effects (don't block streak return)
+        if (STREAK_MILESTONES.has(newStreak)) {
+            (async () => {
+                try {
+                    await activityLog.log(userId, 'streak_milestone', {
+                        title: `Đạt ${newStreak} ngày học liên tục!`,
+                        payload: { streak: newStreak },
+                    });
+                    await pushService.pushToUser(userId, {
+                        title: `${newStreak} ngày liên tục!`,
+                        body: `Bạn đã giữ chuỗi học ${newStreak} ngày. Tiếp tục giữ phong độ nhé!`,
+                        url: '/profile',
+                        tag: `streak-${newStreak}`,
+                        type: 'streak_milestone',
+                        icon: 'local_fire_department',
+                    });
+                    await achievementsService.checkStreakAchievements(userId, newStreak);
+                } catch (e) {
+                    console.error('[streak] milestone side-effect failed:', e.message);
+                }
+            })();
+        }
 
         return {
             updated: true,

@@ -1,5 +1,19 @@
 const Course = require('../models/course.model');
 const db = require('../config/database');
+const pushService = require('../services/push.service');
+
+// Notify all active learners at the given HSK level (fire-and-forget).
+async function broadcastToHskLevel(hskLevel, payload) {
+    try {
+        const [rows] = await db.execute(
+            `SELECT id FROM users WHERE is_active = 1 AND target_hsk = ?`,
+            [hskLevel]
+        );
+        await Promise.allSettled(rows.map(r => pushService.pushToUser(r.id, payload)));
+    } catch (error) {
+        console.error('[course] broadcastToHskLevel failed:', error.message);
+    }
+}
 
 function validateHskLevel(value) {
     if (value === undefined || value === null || value === '') return null;
@@ -52,6 +66,16 @@ exports.createCourse = async (req, res) => {
 
         const id = await Course.create({
             hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index
+        });
+
+        // Fire-and-forget: notify learners at this HSK level
+        broadcastToHskLevel(hsk_level, {
+            title: 'Khóa học mới đã có!',
+            body: `${title} (HSK ${hsk_level}) vừa được thêm — vào học ngay!`,
+            url: `/courses/${id}`,
+            tag: `new-course-${id}`,
+            type: 'new_course',
+            icon: 'play_circle',
         });
 
         res.status(201).json({ success: true, data: { id, ...req.body } });

@@ -15,16 +15,25 @@ function configureWebPush() {
     return true;
 }
 
-async function createNotification(userId, { title, body, url = '/', tag = null }) {
+async function createNotification(userId, { title, body, url = '/', tag = null, type = 'generic', icon = null }) {
     try {
         const [result] = await db.execute(
-            `INSERT INTO notification_events (user_id, title, body, url, tag)
-             VALUES (?, ?, ?, ?, ?)`,
-            [userId, title, body, url, tag]
+            `INSERT INTO notification_events (user_id, title, body, url, tag, type, icon)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [userId, title, body, url, tag, type, icon]
         );
         return result.insertId;
     } catch (error) {
         if (error.code === 'ER_NO_SUCH_TABLE') return null;
+        // If migration 019 hasn't been applied yet, fall back to legacy 5-col insert
+        if (error.code === 'ER_BAD_FIELD_ERROR') {
+            const [result] = await db.execute(
+                `INSERT INTO notification_events (user_id, title, body, url, tag)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [userId, title, body, url, tag]
+            );
+            return result.insertId;
+        }
         throw error;
     }
 }

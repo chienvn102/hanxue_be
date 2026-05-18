@@ -73,6 +73,9 @@ app.use('/api/speech', require('./routes/speech'));
 app.use('/api/practice', require('./routes/practice'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/activity', require('./routes/activity'));
+app.use('/api/achievements', require('./routes/achievements'));
+app.use('/api/realtime', require('./routes/realtime'));
 
 // 404 handler
 app.use((req, res) => {
@@ -88,4 +91,10 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`🚀 HanXue API running on port ${PORT}`);
+    // Start scheduled notifications (daily streak reminder, SRS overdue, etc.)
+    try {
+        require('./services/notificationScheduler.service').start();
+    } catch (e) {
+        console.error('Notification scheduler failed to start:', e.message);
+    }
 });

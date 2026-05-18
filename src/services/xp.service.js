@@ -90,6 +90,20 @@ async function awardXp(userId, action, params = {}) {
         });
     }
 
+    // Check XP-based achievement milestones (fire-and-forget)
+    setImmediate(async () => {
+        try {
+            const [rows] = await db.execute(
+                'SELECT total_xp FROM users WHERE id = ?',
+                [userId]
+            );
+            const totalXp = rows[0]?.total_xp || 0;
+            await require('./achievements.service').checkXpAchievements(userId, totalXp);
+        } catch (error) {
+            console.error('[xp] achievement check failed:', error.message);
+        }
+    });
+
     return amount;
 }
 

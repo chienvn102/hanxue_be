@@ -9,6 +9,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const adminMiddleware = require('../middleware/admin.middleware');
+const { authMiddleware } = require('../middleware/auth');
 const gcs = require('../services/gcs.service');
 
 const router = express.Router();
@@ -123,6 +124,21 @@ router.delete('/audio/:filename', adminMiddleware, async (req, res) => {
 
 router.post('/image', adminMiddleware, imageUpload.single('image'), (req, res) =>
     handleMediaUpload(req, res, { kind: 'images', field: 'image', prefix: 'img' })
+);
+
+// User-side avatar upload (any authenticated user, smaller size cap)
+const avatarUpload = multer({
+    storage: memoryStorage,
+    fileFilter: (req, file, cb) => {
+        const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (allowedMimes.includes(file.mimetype)) cb(null, true);
+        else cb(new Error('Chỉ chấp nhận JPEG/PNG/WebP cho avatar.'), false);
+    },
+    limits: { fileSize: 2 * 1024 * 1024 },
+});
+
+router.post('/avatar', authMiddleware, avatarUpload.single('image'), (req, res) =>
+    handleMediaUpload(req, res, { kind: 'images', field: 'image', prefix: `avatar-u${req.user.userId}` })
 );
 
 router.delete('/image/:filename', adminMiddleware, async (req, res) => {

@@ -8,6 +8,28 @@ const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
 const examTemplate = require('../services/hsk-exam-template.service');
 const { resolveAudioUrl } = require('../services/audioUrl.service');
+const pushService = require('../services/push.service');
+const db = require('../config/database');
+
+async function broadcastNewExam(exam) {
+    if (!exam || !exam.hsk_level || !exam.id) return;
+    try {
+        const [rows] = await db.execute(
+            `SELECT id FROM users WHERE is_active = 1 AND target_hsk = ?`,
+            [exam.hsk_level]
+        );
+        await Promise.allSettled(rows.map(r => pushService.pushToUser(r.id, {
+            title: 'Đề thi HSK mới đã có!',
+            body: `${exam.title} (HSK ${exam.hsk_level}) — vào luyện ngay.`,
+            url: `/hsk-test/${exam.id}`,
+            tag: `new-exam-${exam.id}`,
+            type: 'new_exam',
+            icon: 'quiz',
+        })));
+    } catch (error) {
+        console.error('[hskExam] broadcastNewExam failed:', error.message);
+    }
+}
 
 /**
  * Resolve audio URLs trong exam payload: section.audio_url + mỗi question.questionAudio.
@@ -63,6 +85,8 @@ async function createExam(req, res) {
     try {
         const id = await HskExamModel.createExam(req.body);
         const exam = await HskExamModel.getExamById(id);
+        // Notify learners at this HSK level (fire-and-forget)
+        if (exam?.is_active) broadcastNewExam(exam);
         res.status(201).json({ success: true, data: exam });
     } catch (err) {
         console.error('Create exam error:', err);
