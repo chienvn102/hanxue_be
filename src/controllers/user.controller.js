@@ -4,20 +4,33 @@ const {
     createAndSendPasswordCode,
     verifyPasswordCode
 } = require('../services/passwordCode.service');
+const { resolveAudioUrl } = require('../services/audioUrl.service');
 
 function toBoolean(value) {
     return !!value;
 }
 
-function toUserResponse(user) {
+/**
+ * Resolve a stored media reference (gs://bucket/object) to a signed read URL.
+ * Non-gs:// values (relative `/uploads/...` paths, absolute http URLs, null)
+ * are returned unchanged. Implemented via the existing audioUrl service —
+ * the same gs:// → signed-URL machinery already used for audio works for
+ * any GCS object, including avatars.
+ */
+async function resolveStoredMediaUrl(raw) {
+    return resolveAudioUrl(raw);
+}
+
+async function toUserResponse(user) {
     const hasPassword = toBoolean(user.password_set_at);
     const profileCompleted = toBoolean(user.profile_completed_at);
+    const avatarUrl = await resolveStoredMediaUrl(user.avatar_url);
 
     return {
         id: user.id,
         email: user.email,
         displayName: user.display_name,
-        avatarUrl: user.avatar_url,
+        avatarUrl,
         role: user.role,
         targetHsk: user.target_hsk,
         completedHskLevels: UserModel.parseJsonArray(user.completed_hsk_levels).map(Number).filter(Number.isFinite),
@@ -95,7 +108,7 @@ function normalizeProfileInput(body) {
 
 async function getFreshProfile(userId) {
     const user = await UserModel.findById(userId);
-    return user ? toUserResponse(user) : null;
+    return user ? await toUserResponse(user) : null;
 }
 
 /**

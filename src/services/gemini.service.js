@@ -12,7 +12,12 @@
  *   - unwrapJsonFence(text)             → text
  */
 
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Default model — gemini-2.5-flash-lite is the speed-optimised variant:
+// ~3-4× faster TTFT than gemini-2.5-flash, ~10× cheaper, slight quality drop
+// (still strong for short outputs: chat replies, translate grading, examples gen).
+// Override via env if you need higher quality (gemini-2.5-flash, gemini-2.5-pro)
+// or want to test newer models (gemini-3-pro, gemini-3-flash-preview).
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const DEFAULT_LOCATION = process.env.GCP_LOCATION || 'asia-southeast1';
 const REQUEST_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '60000', 10);
 

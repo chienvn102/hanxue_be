@@ -367,11 +367,15 @@ async function me(req, res) {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        // Resolve gs:// avatar refs to fresh signed URLs (consistent with /api/user/profile)
+        const { resolveAudioUrl } = require('../services/audioUrl.service');
+        const avatarUrl = await resolveAudioUrl(user.avatar_url);
+
         res.json({
             id: user.id,
             email: user.email,
             displayName: user.display_name,
-            avatarUrl: user.avatar_url,
+            avatarUrl,
             targetHsk: user.target_hsk,
             completedHskLevels: UserModel.parseJsonArray(user.completed_hsk_levels).map(Number).filter(Number.isFinite),
             dailyGoalMins: user.daily_goal_mins,

@@ -46,23 +46,40 @@ async function handleMediaUpload(req, res, { kind, field, prefix }) {
         const filename = uniqueFilename(prefix, file.originalname);
         const bucketName = gcs.getBucketName(kind === 'images' ? 'image' : 'audio');
 
+        // `ref` is the canonical reference to store in DB (gs:// for GCS, /uploads/...
+        // for local). `url` is an immediately-usable URL string for the FE to render
+        // right after upload (signed URL for GCS, same path for local).
+        let ref;
         let url;
         if (bucketName) {
             const objectName = `uploads/${kind}/${filename}`;
-            url = await gcs.uploadBuffer({
+            const result = await gcs.uploadBuffer({
                 bucketName,
                 objectName,
                 buffer: file.buffer,
                 contentType: file.mimetype,
-                publicRead: process.env.GCS_UPLOAD_PUBLIC === 'true',
             });
+            // gcs.uploadBuffer returns { bucketName, objectName } — convert to canonical gs:// ref.
+            // (Previously the route returned this object as `url`, which JSON-stringified to
+            //  "[object Object]" downstream — broken avatars in DB.)
+            ref = `gs://${result.bucketName}/${result.objectName}`;
+            try {
+                url = await gcs.getSignedReadUrl(result.bucketName, result.objectName);
+            } catch (signErr) {
+                console.error(`${kind} signed URL failed:`, signErr.message);
+                url = ref; // FE will still receive a string; profile resolver retries later
+            }
         } else {
-            url = await saveLocal({ kind, file, filename });
+            // Local dev: relative path. FE prepends API_BASE via getMediaUrl().
+            const relPath = await saveLocal({ kind, file, filename });
+            ref = relPath;
+            url = relPath;
         }
 
         return res.json({
             success: true,
             url,
+            ref,
             filename,
             originalName: file.originalname,
             size: file.size,
