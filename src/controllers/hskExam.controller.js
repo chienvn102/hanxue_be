@@ -10,6 +10,7 @@ const examTemplate = require('../services/hsk-exam-template.service');
 const { resolveAudioUrl } = require('../services/audioUrl.service');
 const pushService = require('../services/push.service');
 const db = require('../config/database');
+const hskWritingGrader = require('../services/hskWritingGrader.service');
 
 async function broadcastNewExam(exam) {
     if (!exam || !exam.hsk_level || !exam.id) return;
@@ -477,8 +478,18 @@ async function finishExam(req, res) {
         if (attempt.user_id !== userId) return res.status(403).json({ error: 'Access denied' });
         if (attempt.status === 'completed') return res.status(400).json({ error: 'Exam already completed' });
 
+        let aiGrades = {};
+        try {
+            const gradingAnswers = await HskExamModel.getAttemptAnswersForGrading(attemptId);
+            aiGrades = await hskWritingGrader.gradeAttemptWritingAnswers(gradingAnswers);
+        } catch (e) {
+            // Do not block exam completion if the external AI provider is down.
+            // Open-ended writing answers will remain pending and can be regraded later.
+            console.error('[hskExam] AI writing grading skipped:', e.message);
+        }
+
         // Model handles atomicity: FOR UPDATE lock + verify + grade + set completed in one transaction
-        const result = await HskExamModel.completeAttempt(attemptId);
+        const result = await HskExamModel.completeAttempt(attemptId, aiGrades);
 
         // Award XP + streak (only reached if grading succeeded)
         try {
@@ -537,7 +548,10 @@ async function getExamResult(req, res) {
                 userAnswer: ua.user_answer,
                 isCorrect: ua.is_correct,
                 pointsEarned: ua.points_earned,
-                timeSpent: ua.time_spent_seconds
+                timeSpent: ua.time_spent_seconds,
+                aiScore: ua.ai_score,
+                aiFeedback: ua.ai_feedback,
+                aiGradedAt: ua.ai_graded_at,
             };
         }
 
@@ -567,16 +581,19 @@ async function getExamResult(req, res) {
                         questionImage: q.question_image,
                         options: q.options,
                         optionImages: q.option_images,
-                        correctAnswer: q.correct_answer,
-                        explanation: q.explanation,
-                        points: q.points,
-                        userAnswer: answerMap[q.id]?.userAnswer || null,
-                        isCorrect: answerMap[q.id]?.isCorrect ?? null,
-                        pointsEarned: answerMap[q.id]?.pointsEarned || 0
-                    }))
-                }))
-            }
-        });
+	                        correctAnswer: q.correct_answer,
+	                        explanation: q.explanation,
+	                        points: q.points,
+	                        userAnswer: answerMap[q.id]?.userAnswer || null,
+	                        isCorrect: answerMap[q.id]?.isCorrect ?? null,
+	                        pointsEarned: answerMap[q.id]?.pointsEarned || 0,
+	                        aiScore: answerMap[q.id]?.aiScore ?? null,
+	                        aiFeedback: answerMap[q.id]?.aiFeedback || null,
+	                        aiGradedAt: answerMap[q.id]?.aiGradedAt || null,
+	                    }))
+	                }))
+	            }
+	        });
     } catch (err) {
         console.error('Get result error:', err);
         res.status(500).json({ error: 'Failed to get result' });
@@ -592,14 +609,32 @@ async function getAiGradeStatus(req, res) {
         if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
         if (attempt.user_id !== userId) return res.status(403).json({ error: 'Access denied' });
 
+        const aiTypes = Array.from(hskWritingGrader.AI_GRADED_TYPES);
+        const placeholders = aiTypes.map(() => '?').join(',');
+        const [rows] = await db.execute(
+            `SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN ua.ai_score IS NOT NULL THEN 1 ELSE 0 END) AS graded,
+                SUM(CASE WHEN ua.ai_score IS NULL AND ua.user_answer IS NOT NULL AND ua.user_answer <> '' THEN 1 ELSE 0 END) AS pending
+             FROM hsk_user_answers ua
+             JOIN hsk_questions q ON q.id = ua.question_id
+             WHERE ua.attempt_id = ? AND q.question_type IN (${placeholders})`,
+            [attempt.id, ...aiTypes]
+        );
+        const total = Number(rows[0]?.total || 0);
+        const graded = Number(rows[0]?.graded || 0);
+        const pending = Number(rows[0]?.pending || 0);
+
         res.json({
             success: true,
             data: {
                 attemptId: attempt.id,
                 status: attempt.status,
-                requiresAiGrading: false,
-                aiStatus: 'not_configured',
-                message: 'AI grading queue is not enabled yet. Writing answers are saved for later grading.',
+                requiresAiGrading: pending > 0,
+                aiStatus: total === 0 ? 'not_needed' : pending > 0 ? 'pending' : 'graded',
+                total,
+                graded,
+                pending,
             },
         });
     } catch (err) {

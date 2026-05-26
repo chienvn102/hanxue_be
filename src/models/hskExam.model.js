@@ -4,12 +4,7 @@
  */
 
 const db = require('../config/database');
-
-const AI_GRADED_TYPES = new Set([
-    'image_keyword_sentence',
-    'short_essay',
-    'summary_essay',
-]);
+const { AI_GRADED_TYPES, gradeKey } = require('../services/hskWritingGrader.service');
 
 // ============================================================
 // EXAM OPERATIONS
@@ -400,16 +395,18 @@ async function getAttemptById(attemptId) {
 
 async function submitAnswer(attemptId, questionId, userAnswer, isCorrect, pointsEarned, timeSpent) {
     const [result] = await db.execute(
-        `INSERT INTO hsk_user_answers (attempt_id, question_id, user_answer, is_correct, points_earned, time_spent_seconds)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO hsk_user_answers
+            (attempt_id, question_id, user_answer, is_correct, points_earned, ai_score, ai_feedback, ai_graded_at, time_spent_seconds)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?)
          ON DUPLICATE KEY UPDATE user_answer = VALUES(user_answer), is_correct = VALUES(is_correct), 
-         points_earned = VALUES(points_earned), time_spent_seconds = VALUES(time_spent_seconds), answered_at = NOW()`,
+         points_earned = VALUES(points_earned), ai_score = NULL, ai_feedback = NULL, ai_graded_at = NULL,
+         time_spent_seconds = VALUES(time_spent_seconds), answered_at = NOW()`,
         [attemptId, questionId, userAnswer, isCorrect, pointsEarned || 0, timeSpent || 0]
     );
     return result.affectedRows;
 }
 
-async function completeAttempt(attemptId) {
+async function completeAttempt(attemptId, aiGrades = {}) {
     const conn = await db.getConnection();
     try {
         await conn.beginTransaction();
@@ -444,8 +441,36 @@ async function completeAttempt(attemptId) {
         for (const ans of answers) {
             totalTimeSpent += ans.time_spent_seconds || 0;
             if (AI_GRADED_TYPES.has(ans.question_type)) {
+                const aiGrade = aiGrades[gradeKey(ans.question_id, ans.user_answer)];
+                if (aiGrade) {
+                    const isCorrect = Boolean(aiGrade.isCorrect);
+                    const points = Math.max(0, Math.min(ans.question_points || 1, Number(aiGrade.pointsEarned) || 0));
+                    await conn.execute(
+                        `UPDATE hsk_user_answers
+                         SET is_correct = ?, points_earned = ?, ai_score = ?, ai_feedback = ?, ai_graded_at = NOW()
+                         WHERE id = ?`,
+                        [
+                            isCorrect,
+                            points,
+                            Math.max(0, Math.min(100, Number(aiGrade.score) || 0)),
+                            JSON.stringify(aiGrade.feedback || {}),
+                            ans.id,
+                        ]
+                    );
+
+                    if (ans.section_type === 'listening') listeningScore += points;
+                    else if (ans.section_type === 'reading') readingScore += points;
+                    else if (ans.section_type === 'writing') writingScore += points;
+
+                    if (isCorrect) correctCount++;
+                    else wrongCount++;
+                    continue;
+                }
+
                 await conn.execute(
-                    `UPDATE hsk_user_answers SET is_correct = NULL, points_earned = 0 WHERE id = ?`,
+                    `UPDATE hsk_user_answers
+                     SET is_correct = NULL, points_earned = 0, ai_score = NULL, ai_feedback = NULL, ai_graded_at = NULL
+                     WHERE id = ?`,
                     [ans.id]
                 );
                 aiPendingCount++;
@@ -456,7 +481,9 @@ async function completeAttempt(attemptId) {
 
             // Update the answer row with grading result
             await conn.execute(
-                `UPDATE hsk_user_answers SET is_correct = ?, points_earned = ? WHERE id = ?`,
+                `UPDATE hsk_user_answers
+                 SET is_correct = ?, points_earned = ?, ai_score = NULL, ai_feedback = NULL, ai_graded_at = NULL
+                 WHERE id = ?`,
                 [isCorrect, points, ans.id]
             );
 
@@ -570,14 +597,43 @@ async function getAttemptAnswers(attemptId) {
     return rows;
 }
 
-async function getAttemptWithAnswers(attemptId) {
+async function getAttemptAnswersForGrading(attemptId) {
     const [rows] = await db.execute(
-        `SELECT ua.question_id, ua.user_answer, ua.is_correct, ua.points_earned, ua.time_spent_seconds
+        `SELECT ua.id AS answer_id, ua.question_id, ua.user_answer, ua.time_spent_seconds,
+                q.question_number, q.question_type, q.question_text, q.statement, q.passage,
+                q.question_image, q.correct_answer, q.explanation, q.points AS question_points,
+                q.meta, s.section_type
          FROM hsk_user_answers ua
+         JOIN hsk_questions q ON ua.question_id = q.id
+         JOIN hsk_sections s ON q.section_id = s.id
          WHERE ua.attempt_id = ?`,
         [attemptId]
     );
     return rows;
+}
+
+async function getAttemptWithAnswers(attemptId) {
+    const [rows] = await db.execute(
+        `SELECT ua.question_id, ua.user_answer, ua.is_correct, ua.points_earned,
+                ua.ai_score, ua.ai_feedback, ua.ai_graded_at, ua.time_spent_seconds
+         FROM hsk_user_answers ua
+         WHERE ua.attempt_id = ?`,
+        [attemptId]
+    );
+    return rows.map(row => ({
+        ...row,
+        ai_feedback: parseJsonSafe(row.ai_feedback),
+    }));
+}
+
+function parseJsonSafe(value) {
+    if (!value) return null;
+    if (typeof value === 'object') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
 }
 
 // ============================================================
@@ -652,6 +708,7 @@ module.exports = {
     getInProgressAttempt,
     discardInProgressAttempts,
     getAttemptAnswers,
+    getAttemptAnswersForGrading,
     getAttemptWithAnswers,
     submitAnswer,
     completeAttempt,
