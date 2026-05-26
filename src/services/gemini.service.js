@@ -148,6 +148,9 @@ async function chat(messages, {
     maxOutputTokens = 2048,
     timeoutMs = REQUEST_TIMEOUT_MS,
     location = DEFAULT_LOCATION,
+    responseMimeType,
+    responseSchema,
+    responseJsonSchema,
 } = {}) {
     try {
         const ai = getClient(location);
@@ -161,6 +164,9 @@ async function chat(messages, {
             maxOutputTokens,
         };
         if (finalSystemInstruction) config.systemInstruction = finalSystemInstruction;
+        if (responseMimeType) config.responseMimeType = responseMimeType;
+        if (responseSchema) config.responseSchema = responseSchema;
+        if (responseJsonSchema) config.responseJsonSchema = responseJsonSchema;
         const safety = getSafetySettings();
         if (safety) config.safetySettings = safety;
         if (tools) config.tools = tools;

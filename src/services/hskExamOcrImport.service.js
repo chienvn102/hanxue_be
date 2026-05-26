@@ -11,7 +11,7 @@ const db = require('../config/database');
 const gcs = require('./gcs.service');
 const gemini = require('./gemini.service');
 
-const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-3.5-flash';
+const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-2.5-pro';
 const IMPORT_LOCATION = process.env.HSK_IMPORT_LOCATION || 'global';
 const MAX_RAW_TEXT_CHARS = parseInt(process.env.HSK_IMPORT_MAX_RAW_TEXT_CHARS || '180000', 10);
 const MAX_OUTPUT_TOKENS = parseInt(process.env.HSK_IMPORT_MAX_OUTPUT_TOKENS || '32768', 10);
@@ -422,14 +422,76 @@ function buildSectionPrompt({ hskLevel, pdfText, answerText }, plan) {
     ].join('\n');
 }
 
-function extractJsonObject(text) {
+function previewText(text, limit = 500) {
+    const compact = String(text || '').replace(/\s+/g, ' ').trim();
+    return compact.length > limit ? `${compact.slice(0, limit)}...` : compact;
+}
+
+function extractJsonObject(text, label = 'AI response') {
     const clean = gemini.unwrapJsonFence(text);
+    if (!clean) {
+        throw new Error(`${label} is empty`);
+    }
     try {
         return JSON.parse(clean);
     } catch {
-        const match = clean.match(/\{[\s\S]*\}/);
-        if (!match) throw new Error('AI response does not contain a JSON object');
-        return JSON.parse(match[0]);
+        const firstBrace = clean.indexOf('{');
+        const lastBrace = clean.lastIndexOf('}');
+        if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+            throw new Error(`${label} does not contain a JSON object. Preview: ${previewText(clean)}`);
+        }
+        try {
+            return JSON.parse(clean.slice(firstBrace, lastBrace + 1));
+        } catch (error) {
+            throw new Error(`${label} contains invalid JSON: ${error.message}. Preview: ${previewText(clean)}`);
+        }
+    }
+}
+
+async function generateImportJson(prompt, { label, maxOutputTokens }) {
+    const request = async (content, attempt) => {
+        const { text } = await gemini.chat([{ role: 'user', content }], {
+            model: IMPORT_MODEL,
+            location: IMPORT_LOCATION,
+            temperature: 0,
+            maxOutputTokens,
+            timeoutMs: IMPORT_TIMEOUT_MS,
+            responseMimeType: 'application/json',
+            systemInstruction: 'Return exactly one valid JSON object. Do not include markdown, comments, or prose outside JSON.',
+        });
+
+        try {
+            return extractJsonObject(text, `${label} attempt ${attempt}`);
+        } catch (error) {
+            const preview = previewText(text, 700);
+            error.aiResponsePreview = preview;
+            console.error(`[hskImport] ${label} invalid JSON attempt ${attempt}:`, error.message);
+            console.error(`[hskImport] ${label} response preview attempt ${attempt}:`, preview);
+            throw error;
+        }
+    };
+
+    try {
+        return await request(prompt, 1);
+    } catch (firstError) {
+        const retryPrompt = [
+            prompt,
+            '',
+            'Your previous response was not a valid JSON object.',
+            'Return ONLY one valid JSON object matching the requested schema.',
+            'No markdown fences, no explanation, no bullet list, no text before or after JSON.',
+        ].join('\n');
+
+        try {
+            return await request(retryPrompt, 2);
+        } catch (secondError) {
+            secondError.message = `${label} failed to return valid JSON after retry: ${secondError.message}`;
+            secondError.cause = firstError;
+            if (!secondError.aiResponsePreview && firstError.aiResponsePreview) {
+                secondError.aiResponsePreview = firstError.aiResponsePreview;
+            }
+            throw secondError;
+        }
     }
 }
 
@@ -439,15 +501,10 @@ async function structureWithAi(input) {
     }
 
     const prompt = buildPrompt(input);
-    const { text } = await gemini.chat([{ role: 'user', content: prompt }], {
-        model: IMPORT_MODEL,
-        location: IMPORT_LOCATION,
-        temperature: 0.1,
+    return generateImportJson(prompt, {
+        label: `HSK${input.hskLevel} import`,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        timeoutMs: IMPORT_TIMEOUT_MS,
-        systemInstruction: 'Return only valid JSON. Do not include markdown fences.',
     });
-    return extractJsonObject(text);
 }
 
 async function structureHsk4WithAi(input) {
@@ -457,15 +514,10 @@ async function structureHsk4WithAi(input) {
 
     for (const plan of HSK4_SECTION_PLANS) {
         const prompt = buildSectionPrompt(input, plan);
-        const { text } = await gemini.chat([{ role: 'user', content: prompt }], {
-            model: IMPORT_MODEL,
-            location: IMPORT_LOCATION,
-            temperature: 0.1,
+        const parsed = await generateImportJson(prompt, {
+            label: `HSK4 ${plan.section_type}`,
             maxOutputTokens: Math.min(MAX_OUTPUT_TOKENS, plan.maxOutputTokens),
-            timeoutMs: IMPORT_TIMEOUT_MS,
-            systemInstruction: 'Return only valid JSON. Do not include markdown fences.',
         });
-        const parsed = extractJsonObject(text);
         const section = parsed.section || parsed;
         if (Array.isArray(parsed.warnings)) warnings.push(...parsed.warnings.map(String));
         sections.push({
@@ -825,9 +877,13 @@ async function processJob(jobId, files, input) {
             completed_at: new Date(),
         });
     } catch (error) {
+        const errorList = [error.message];
+        if (error.aiResponsePreview) {
+            errorList.push(`AI response preview: ${error.aiResponsePreview}`);
+        }
         await updateJob(jobId, {
             status: 'failed',
-            errors: [error.message],
+            errors: errorList,
             completed_at: new Date(),
         }).catch(() => {});
         console.error('[hskImport] job failed:', jobId, error);
