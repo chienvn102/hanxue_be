@@ -6,8 +6,34 @@
 const express = require('express');
 const router = express.Router();
 const hskExamController = require('../controllers/hskExam.controller');
+const hskExamImportController = require('../controllers/hskExamImport.controller');
 const { authMiddleware } = require('../middleware/auth');
 const adminMiddleware = require('../middleware/admin.middleware');
+
+function handleImportUpload(req, res, next) {
+    hskExamImportController.uploadImportFiles(req, res, (err) => {
+        if (err) {
+            return res.status(400).json({
+                success: false,
+                message: err.message || 'Upload import file không hợp lệ.',
+            });
+        }
+        return next();
+    });
+}
+
+// ============================================================
+// ADMIN OCR IMPORT HOOK (additive; does not alter existing CRUD)
+// Must stay before dynamic GET /:id routes.
+// ============================================================
+
+router.post(
+    '/import/ocr',
+    adminMiddleware,
+    handleImportUpload,
+    hskExamImportController.createOcrImport
+);
+router.get('/import/jobs/:jobId', adminMiddleware, hskExamImportController.getImportJob);
 
 // ============================================================
 // PUBLIC ROUTES (Client - Taking Exams)
