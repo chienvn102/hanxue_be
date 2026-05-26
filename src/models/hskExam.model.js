@@ -90,13 +90,25 @@ async function getExamById(id, includeSections = false) {
     return exam;
 }
 
+/**
+ * Coerce exam_type về enum hợp lệ {practice, exam} (migration 022).
+ * Legacy 'mock'/'official' → 'exam'. Mọi giá trị khác/null → 'practice'.
+ * Tránh MySQL "Data truncated" khi FE cũ cached vẫn gửi value cũ.
+ */
+function normalizeExamType(value) {
+    if (value === 'practice' || value === 'exam') return value;
+    if (value === 'mock' || value === 'official') return 'exam';
+    return 'practice';
+}
+
 async function createExam(data) {
     const { title, hsk_level, exam_type, duration_minutes, passing_score, description } = data;
+    const examType = normalizeExamType(exam_type);
 
     const [result] = await db.execute(
         `INSERT INTO hsk_exams (title, hsk_level, exam_type, duration_minutes, passing_score, description)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [title, hsk_level || 1, exam_type || 'practice', duration_minutes || 60, passing_score || 120, description || null]
+        [title, hsk_level || 1, examType, duration_minutes || 60, passing_score || 120, description || null]
     );
     return result.insertId;
 }
@@ -109,7 +121,8 @@ async function updateExam(id, data) {
     for (const field of allowedFields) {
         if (data[field] !== undefined) {
             updates.push(`${field} = ?`);
-            values.push(data[field]);
+            // Coerce legacy 'mock'/'official' → 'exam' (migration 022).
+            values.push(field === 'exam_type' ? normalizeExamType(data[field]) : data[field]);
         }
     }
 

@@ -302,7 +302,11 @@ async function instantiateTemplate(level, overrides = {}) {
 
         // 1. Insert exam
         const examTitle = overrides.title || `${tmpl.title} (${new Date().toISOString().slice(0, 10)})`;
-        const examType = overrides.exam_type || 'practice';
+        // Coerce legacy 'mock'/'official' → 'exam' (migration 022 collapse).
+        const rawType = overrides.exam_type;
+        const examType =
+            rawType === 'practice' || rawType === 'exam' ? rawType :
+            rawType === 'mock' || rawType === 'official' ? 'exam' : 'practice';
         const description = overrides.description || null;
 
         const [examRes] = await conn.execute(

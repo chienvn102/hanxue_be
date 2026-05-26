@@ -245,17 +245,18 @@ async function deleteById(id) {
 
 async function findNotMasteredByUser(userId, hskLevel, limit = 10) {
     const cappedLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 20);
+    // Mastery source = user_vocabulary_progress.mastery_level >= 4 (xem
+    // user.model.js getLearningProfile + progress.controller.js deriveMastery).
     const [rows] = await db.execute(
         `SELECT v.id, v.simplified, v.pinyin, v.meaning_vi, v.hsk_level
            FROM vocabulary v
           WHERE v.hsk_level = ?
             AND NOT EXISTS (
                 SELECT 1
-                  FROM notebook_items ni
-                  JOIN notebooks n ON n.id = ni.notebook_id
-                 WHERE n.user_id = ?
-                   AND ni.vocabulary_id = v.id
-                   AND ni.mastery_level = 'mastered'
+                  FROM user_vocabulary_progress p
+                 WHERE p.user_id = ?
+                   AND p.vocabulary_id = v.id
+                   AND p.mastery_level >= 4
             )
           ORDER BY RAND()
           LIMIT ?`,

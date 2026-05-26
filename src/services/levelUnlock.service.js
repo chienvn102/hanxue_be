@@ -40,16 +40,18 @@ async function hasPassedExam(userId, hskLevel) {
 }
 
 async function getMasteryRatio(userId, hskLevel) {
+    // Mastery source = user_vocabulary_progress.mastery_level >= 4 (flashcard
+    // review). Trước đây dùng notebook_items.mastery_level ENUM nhưng cột này
+    // chưa bao giờ được flashcard cập nhật → tỉ lệ luôn = 0 → block level unlock.
     const [[totalRows], [masteredRows]] = await Promise.all([
         db.execute('SELECT COUNT(*) AS total FROM vocabulary WHERE hsk_level = ?', [hskLevel]),
         db.execute(
             `SELECT COUNT(DISTINCT v.id) AS mastered
                FROM vocabulary v
-               JOIN notebook_items ni ON ni.vocabulary_id = v.id
-               JOIN notebooks n ON n.id = ni.notebook_id
+               JOIN user_vocabulary_progress p ON p.vocabulary_id = v.id
               WHERE v.hsk_level = ?
-                AND n.user_id = ?
-                AND ni.mastery_level = 'mastered'`,
+                AND p.user_id = ?
+                AND p.mastery_level >= 4`,
             [hskLevel, userId]
         ),
     ]);

@@ -303,17 +303,19 @@ async function getLearningProfile(userId) {
     if (!user) return null;
 
     const targetHsk = user.target_hsk || 1;
-    // notebook_items dùng `vocabulary_id` là PK chuẩn (xem hanxue070526.sql:44814).
-    // `vocab_id` là legacy NULL — bỏ qua.
+    // Mastery source-of-truth = user_vocabulary_progress (cập nhật bởi
+    // flashcard /api/progress/review). `notebook_items.mastery_level` enum
+    // KHÔNG được update bởi flashcard, nên không thể dùng để đếm "đã thuộc".
+    // mastery_level >= 4 (numeric 0-5) coi là "đã thuộc" — khớp với
+    // deriveMastery() ở progress.controller.js.
     const [[masteredRows], [totalRows], [recentXpRows]] = await Promise.all([
         db.execute(
             `SELECT COUNT(DISTINCT v.id) AS mastered
                FROM vocabulary v
-               JOIN notebook_items ni ON ni.vocabulary_id = v.id
-               JOIN notebooks n ON n.id = ni.notebook_id
-              WHERE n.user_id = ?
+               JOIN user_vocabulary_progress p ON p.vocabulary_id = v.id
+              WHERE p.user_id = ?
                 AND v.hsk_level = ?
-                AND ni.mastery_level = 'mastered'`,
+                AND p.mastery_level >= 4`,
             [userId, targetHsk]
         ),
         db.execute(

@@ -1,11 +1,18 @@
 const db = require('../config/database');
 
 const Notebook = {
-    // Get all notebooks for a user
+    // Get all notebooks for a user.
+    // `mastered_count` = số từ trong sổ tay này mà user đã đạt mastery
+    // (user_vocabulary_progress.mastery_level >= 4 qua flashcard review).
     findAllByUser: async (userId) => {
         const sql = `
-            SELECT n.*, 
-                   (SELECT COUNT(*) FROM notebook_items ni WHERE ni.notebook_id = n.id) as word_count
+            SELECT n.*,
+                   (SELECT COUNT(*) FROM notebook_items ni
+                     WHERE ni.notebook_id = n.id) AS word_count,
+                   (SELECT COUNT(DISTINCT ni.vocabulary_id) FROM notebook_items ni
+                     JOIN user_vocabulary_progress p
+                       ON p.vocabulary_id = ni.vocabulary_id AND p.user_id = n.user_id
+                     WHERE ni.notebook_id = n.id AND p.mastery_level >= 4) AS mastered_count
             FROM notebooks n
             WHERE n.user_id = ?
             ORDER BY n.is_default DESC, n.created_at DESC
@@ -69,15 +76,29 @@ const Notebook = {
         return result.affectedRows;
     },
 
-    // Get items in a notebook
+    // Get items in a notebook.
+    // mastery_level enum (new/learning/mastered) được derive từ
+    // user_vocabulary_progress.mastery_level (0–5) — flashcard review là
+    // source-of-truth. `notebook_items.mastery_level` legacy không được
+    // flashcard update nên ignore. last_reviewed_at + review_count cũng
+    // lấy từ user_vocabulary_progress để khớp.
     getItems: async (notebookId, userId) => {
         const sql = `
-            SELECT ni.notebook_id, ni.vocabulary_id, ni.vocab_id, ni.note, 
-                   ni.mastery_level, ni.review_count, ni.last_reviewed_at, ni.added_at,
+            SELECT ni.notebook_id, ni.vocabulary_id, ni.vocab_id, ni.note,
+                   ni.added_at,
+                   CASE
+                       WHEN p.mastery_level IS NULL OR p.mastery_level = 0 THEN 'new'
+                       WHEN p.mastery_level >= 4 THEN 'mastered'
+                       ELSE 'learning'
+                   END AS mastery_level,
+                   COALESCE(p.times_seen, 0) AS review_count,
+                   p.last_reviewed AS last_reviewed_at,
                    v.simplified, v.pinyin, v.meaning_vi, v.hsk_level, v.word_type
             FROM notebook_items ni
             JOIN vocabulary v ON ni.vocabulary_id = v.id
             JOIN notebooks n ON ni.notebook_id = n.id
+            LEFT JOIN user_vocabulary_progress p
+                   ON p.vocabulary_id = ni.vocabulary_id AND p.user_id = n.user_id
             WHERE ni.notebook_id = ? AND n.user_id = ?
             ORDER BY ni.added_at DESC
         `;
@@ -192,12 +213,21 @@ const Notebook = {
 
     searchUserVocab: async (userId, query, mastery = 'all', limit = 20) => {
         const cappedLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 20);
+        // mastery derive từ user_vocabulary_progress, không phải notebook_items.
         let sql = `
             SELECT DISTINCT v.id, v.simplified, v.pinyin, v.meaning_vi,
-                   v.hsk_level, ni.mastery_level, n.name AS notebook_name
+                   v.hsk_level,
+                   CASE
+                       WHEN p.mastery_level IS NULL OR p.mastery_level = 0 THEN 'new'
+                       WHEN p.mastery_level >= 4 THEN 'mastered'
+                       ELSE 'learning'
+                   END AS mastery_level,
+                   n.name AS notebook_name
               FROM notebook_items ni
               JOIN notebooks n ON n.id = ni.notebook_id
               JOIN vocabulary v ON v.id = ni.vocabulary_id
+              LEFT JOIN user_vocabulary_progress p
+                     ON p.vocabulary_id = ni.vocabulary_id AND p.user_id = n.user_id
              WHERE n.user_id = ?
                AND (
                     v.simplified LIKE ?
@@ -207,11 +237,14 @@ const Notebook = {
         `;
         const term = `%${String(query || '').trim()}%`;
         const params = [userId, term, term, term];
-        if (['new', 'learning', 'mastered'].includes(mastery)) {
-            sql += ' AND ni.mastery_level = ?';
-            params.push(mastery);
+        if (mastery === 'mastered') {
+            sql += ' AND p.mastery_level >= 4';
+        } else if (mastery === 'learning') {
+            sql += ' AND p.mastery_level BETWEEN 1 AND 3';
+        } else if (mastery === 'new') {
+            sql += ' AND (p.mastery_level IS NULL OR p.mastery_level = 0)';
         }
-        sql += ' ORDER BY ni.last_reviewed_at ASC, ni.added_at DESC LIMIT ?';
+        sql += ' ORDER BY p.last_reviewed ASC, ni.added_at DESC LIMIT ?';
         params.push(cappedLimit);
         const [rows] = await db.execute(sql, params);
         return rows;
