@@ -11,9 +11,11 @@ const db = require('../config/database');
 const gcs = require('./gcs.service');
 const gemini = require('./gemini.service');
 
-const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-2.5-flash';
+const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-3.5-flash';
+const IMPORT_LOCATION = process.env.HSK_IMPORT_LOCATION || 'global';
 const MAX_RAW_TEXT_CHARS = parseInt(process.env.HSK_IMPORT_MAX_RAW_TEXT_CHARS || '180000', 10);
 const MAX_OUTPUT_TOKENS = parseInt(process.env.HSK_IMPORT_MAX_OUTPUT_TOKENS || '32768', 10);
+const IMPORT_TIMEOUT_MS = parseInt(process.env.HSK_IMPORT_TIMEOUT_MS || '180000', 10);
 
 const ALLOWED_QUESTION_TYPES = new Set([
     'image_match',
@@ -46,6 +48,53 @@ const HSK_EXPECTED = {
     5: { total: 100, duration: 125, passing: 180, sections: { listening: 45, reading: 45, writing: 10 } },
     6: { total: 101, duration: 140, passing: 180, sections: { listening: 50, reading: 50, writing: 1 } },
 };
+
+const HSK4_SECTION_PLANS = [
+    {
+        section_type: 'listening',
+        section_order: 1,
+        title: 'Phần I — Nghe hiểu (听力)',
+        instructions: 'Nghe audio liên tục và chọn đáp án đúng.',
+        duration_seconds: 1800,
+        range: '1-45',
+        expectedCount: 45,
+        maxOutputTokens: 18000,
+        guide: [
+            'Questions 1-10: true_false, use statement + transcript, correct_answer A for TRUE and B for FALSE.',
+            'Questions 11-45: multiple_choice, use options A-D where available, transcript hidden in result only.',
+            'Do not create per-question audio; section-level audio is used in exam mode.',
+        ].join('\n'),
+    },
+    {
+        section_type: 'reading',
+        section_order: 2,
+        title: 'Phần II — Đọc hiểu (阅读)',
+        instructions: 'Đọc nội dung và chọn đáp án đúng.',
+        duration_seconds: 2400,
+        range: '46-85',
+        expectedCount: 40,
+        maxOutputTokens: 18000,
+        guide: [
+            'Questions 46-55: word_bank_fill. Create word_bank groups A-F and set group_ref.',
+            'Questions 56-65: sentence_order.',
+            'Questions 66-85: multiple_choice. Use passage_multi groups for shared passages.',
+        ].join('\n'),
+    },
+    {
+        section_type: 'writing',
+        section_order: 3,
+        title: 'Phần III — Viết (书写)',
+        instructions: 'Hoàn thành câu và viết câu theo ảnh/từ khóa.',
+        duration_seconds: 1500,
+        range: '86-100',
+        expectedCount: 15,
+        maxOutputTokens: 10000,
+        guide: [
+            'Questions 86-95: sentence_assembly. question_text must be chunks separated by " / ".',
+            'Questions 96-100: image_keyword_sentence. If image cannot be extracted, leave question_image empty and set meta.keyword.',
+        ].join('\n'),
+    },
+];
 
 function jsonOrNull(value) {
     if (value === undefined || value === null) return null;
@@ -306,6 +355,73 @@ function buildPrompt({ title, hskLevel, examType, pdfText, answerText }) {
     ].join('\n');
 }
 
+function buildSectionPrompt({ hskLevel, pdfText, answerText }, plan) {
+    return [
+        'Bạn là bộ import đề thi HSK cho hệ thống HanXue. Trả về CHỈ JSON hợp lệ, không markdown.',
+        '',
+        `Nhiệm vụ: parse riêng section ${plan.section_type} của HSK${hskLevel}, câu ${plan.range}.`,
+        'Giữ đúng form đề gốc. Không tự tạo câu hỏi ngoài nội dung file. Nếu thiếu dữ liệu, để field rỗng và thêm warning.',
+        '',
+        plan.guide,
+        '',
+        'Output JSON shape:',
+        JSON.stringify({
+            section: {
+                section_type: plan.section_type,
+                section_order: plan.section_order,
+                title: plan.title,
+                instructions: plan.instructions,
+                duration_seconds: plan.duration_seconds,
+                groups: [
+                    {
+                        local_id: 'g1',
+                        group_type: 'word_bank|reply_bank|image_grid|passage|passage_multi',
+                        title_vi: '',
+                        instructions_vi: '',
+                        content: {},
+                        order_index: 1,
+                    },
+                ],
+                questions: [
+                    {
+                        question_number: Number(plan.range.split('-')[0]),
+                        question_type: 'multiple_choice',
+                        group_ref: null,
+                        question_text: '',
+                        passage: '',
+                        statement: '',
+                        question_image: '',
+                        transcript: '',
+                        options: [{ label: 'A', text: '' }],
+                        option_images: [],
+                        correct_answer: '',
+                        explanation: '',
+                        difficulty: 1,
+                        points: 1,
+                        meta: {},
+                    },
+                ],
+            },
+            warnings: [],
+        }, null, 2),
+        '',
+        'Important schema rules:',
+        '- Return exactly one section object.',
+        `- Return exactly ${plan.expectedCount} questions, numbers ${plan.range}.`,
+        `- question_type chỉ được là: ${Array.from(ALLOWED_QUESTION_TYPES).join(', ')}.`,
+        `- group_type chỉ được là: ${Array.from(ALLOWED_GROUP_TYPES).join(', ')}.`,
+        '- group_ref trỏ tới groups[].local_id hoặc index nhóm trong cùng section.',
+        '- correct_answer dùng label A/B/C/D hoặc đáp án mẫu. true_false bắt buộc A=TRUE, B=FALSE.',
+        '- Không include câu ngoài range được yêu cầu.',
+        '',
+        '--- PDF TEXT ---',
+        truncateText(pdfText),
+        '',
+        '--- ANSWER TEXT ---',
+        truncateText(answerText),
+    ].join('\n');
+}
+
 function extractJsonObject(text) {
     const clean = gemini.unwrapJsonFence(text);
     try {
@@ -318,14 +434,63 @@ function extractJsonObject(text) {
 }
 
 async function structureWithAi(input) {
+    if (input.hskLevel === 4 && process.env.HSK_IMPORT_CHUNKED !== 'false') {
+        return structureHsk4WithAi(input);
+    }
+
     const prompt = buildPrompt(input);
     const { text } = await gemini.chat([{ role: 'user', content: prompt }], {
         model: IMPORT_MODEL,
+        location: IMPORT_LOCATION,
         temperature: 0.1,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
+        timeoutMs: IMPORT_TIMEOUT_MS,
         systemInstruction: 'Return only valid JSON. Do not include markdown fences.',
     });
     return extractJsonObject(text);
+}
+
+async function structureHsk4WithAi(input) {
+    const expected = HSK_EXPECTED[4];
+    const sections = [];
+    const warnings = ['HSK4 import dùng chế độ chunked theo section để tránh timeout.'];
+
+    for (const plan of HSK4_SECTION_PLANS) {
+        const prompt = buildSectionPrompt(input, plan);
+        const { text } = await gemini.chat([{ role: 'user', content: prompt }], {
+            model: IMPORT_MODEL,
+            location: IMPORT_LOCATION,
+            temperature: 0.1,
+            maxOutputTokens: Math.min(MAX_OUTPUT_TOKENS, plan.maxOutputTokens),
+            timeoutMs: IMPORT_TIMEOUT_MS,
+            systemInstruction: 'Return only valid JSON. Do not include markdown fences.',
+        });
+        const parsed = extractJsonObject(text);
+        const section = parsed.section || parsed;
+        if (Array.isArray(parsed.warnings)) warnings.push(...parsed.warnings.map(String));
+        sections.push({
+            section_type: plan.section_type,
+            section_order: plan.section_order,
+            title: section.title || plan.title,
+            instructions: section.instructions || plan.instructions,
+            duration_seconds: section.duration_seconds || plan.duration_seconds,
+            groups: Array.isArray(section.groups) ? section.groups : [],
+            questions: Array.isArray(section.questions) ? section.questions : [],
+        });
+    }
+
+    return {
+        exam: {
+            title: input.title,
+            hsk_level: 4,
+            exam_type: input.examType,
+            duration_minutes: expected.duration,
+            passing_score: expected.passing,
+            description: 'Imported by OCR',
+        },
+        sections,
+        warnings,
+    };
 }
 
 function normalizeOption(opt, idx) {

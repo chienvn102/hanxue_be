@@ -21,10 +21,11 @@ const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const DEFAULT_LOCATION = process.env.GCP_LOCATION || 'asia-southeast1';
 const REQUEST_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '60000', 10);
 
-let aiClient;
+const aiClients = new Map();
 
-function getClient() {
-    if (aiClient) return aiClient;
+function getClient(location = DEFAULT_LOCATION) {
+    const resolvedLocation = location || DEFAULT_LOCATION;
+    if (aiClients.has(resolvedLocation)) return aiClients.get(resolvedLocation);
 
     const project = process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
     if (!project) {
@@ -35,11 +36,12 @@ function getClient() {
     }
 
     const { GoogleGenAI } = require('@google/genai');
-    aiClient = new GoogleGenAI({
+    const aiClient = new GoogleGenAI({
         vertexai: true,
         project,
-        location: DEFAULT_LOCATION,
+        location: resolvedLocation,
     });
+    aiClients.set(resolvedLocation, aiClient);
     return aiClient;
 }
 
@@ -144,9 +146,11 @@ async function chat(messages, {
     model = DEFAULT_MODEL,
     temperature = 0.7,
     maxOutputTokens = 2048,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    location = DEFAULT_LOCATION,
 } = {}) {
     try {
-        const ai = getClient();
+        const ai = getClient(location);
         const { contents, systemParts } = toGenAiContents(messages);
         const finalSystemInstruction = systemInstruction
             ? [{ text: systemInstruction }]
@@ -163,7 +167,7 @@ async function chat(messages, {
 
         const result = await withTimeout(
             ai.models.generateContent({ model, contents, config }),
-            REQUEST_TIMEOUT_MS,
+            timeoutMs,
             'Gemini'
         );
 
