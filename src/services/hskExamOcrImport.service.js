@@ -133,14 +133,11 @@ function parseJson(value, fallback) {
 async function extractPdfText(file, warnings) {
     let text = '';
     try {
-        const { PDFParse } = require('pdf-parse');
-        const parser = new PDFParse({ data: file.buffer });
-        try {
-            const result = await parser.getText();
-            text = result?.text || '';
-        } finally {
-            await parser.destroy().catch(() => {});
-        }
+        const pdfParse = require('pdf-parse');
+        // Pin to pdf-parse@1.x for Node 18 on the droplet. Keep this call shape
+        // intentionally simple; pdf-parse@2 requires newer Node/browser polyfills.
+        const result = await pdfParse(file.buffer);
+        text = result?.text || '';
     } catch (error) {
         warnings.push(`Không đọc được text layer PDF bằng pdf-parse: ${error.message}`);
     }
