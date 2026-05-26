@@ -385,27 +385,17 @@ async function startExam(req, res) {
         const exam = await HskExamModel.getExamById(req.params.id, true);
         if (!exam) return res.status(404).json({ error: 'Exam not found' });
 
-        // Check for existing in_progress attempt (resume support)
-        let attemptId;
-        let savedAnswers = [];
-        const existingAttempt = await HskExamModel.getInProgressAttempt(userId, exam.id);
-
-        if (existingAttempt) {
-            attemptId = existingAttempt.id;
-            savedAnswers = await HskExamModel.getAttemptAnswers(attemptId);
-        } else {
-            attemptId = await HskExamModel.createAttempt(userId, exam.id);
-        }
+        // No resume — discard any prior in-progress attempt + start fresh.
+        // Lý do: UX yêu cầu — exit không lưu. Attempt cũ chưa nộp coi như bỏ.
+        await HskExamModel.discardInProgressAttempts(userId, exam.id);
+        const attemptId = await HskExamModel.createAttempt(userId, exam.id);
 
         // Return exam with questions (without correct answers)
         const safeExam = {
             ...exam,
             attemptId,
-            startedAt: existingAttempt?.started_at || new Date().toISOString(),
-            savedAnswers: savedAnswers.map(a => ({
-                questionId: a.question_id,
-                answer: a.user_answer
-            })),
+            startedAt: new Date().toISOString(),
+            savedAnswers: [],
             sections: exam.sections.map(section => ({
                 ...section,
                 groups: section.groups || [],

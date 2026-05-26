@@ -533,6 +533,20 @@ async function getInProgressAttempt(userId, examId) {
     return rows[0] || null;
 }
 
+/**
+ * Hard-delete mọi in_progress attempt + answers của (user, exam).
+ * Dùng khi user bắt đầu/khởi động lại bài thi: attempt cũ chưa nộp = bỏ luôn.
+ * FK `hsk_user_answers.attempt_id` ON DELETE CASCADE → answers tự dọn.
+ */
+async function discardInProgressAttempts(userId, examId) {
+    const [result] = await db.execute(
+        `DELETE FROM hsk_exam_attempts
+         WHERE user_id = ? AND exam_id = ? AND status = 'in_progress'`,
+        [userId, examId]
+    );
+    return result.affectedRows;
+}
+
 async function getAttemptAnswers(attemptId) {
     const [rows] = await db.execute(
         `SELECT ua.question_id, ua.user_answer, ua.time_spent_seconds
@@ -623,6 +637,7 @@ module.exports = {
     createAttempt,
     getAttemptById,
     getInProgressAttempt,
+    discardInProgressAttempts,
     getAttemptAnswers,
     getAttemptWithAnswers,
     submitAnswer,
