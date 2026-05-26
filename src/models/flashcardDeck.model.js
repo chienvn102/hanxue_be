@@ -140,6 +140,51 @@ async function removeItem(deckId, userId, vocabId) {
     return true;
 }
 
+/**
+ * Update tên/mô tả của 1 deck. Chỉ chấp nhận field hợp lệ.
+ * Trả về số row affected (0 nếu deck không thuộc user).
+ */
+async function updateDeck(deckId, userId, { name, description }) {
+    const updates = [];
+    const params = [];
+    if (typeof name === 'string') {
+        const trimmed = name.trim();
+        if (!trimmed) { const e = new Error('name không được rỗng'); e.status = 400; throw e; }
+        updates.push('name = ?');
+        params.push(trimmed.slice(0, 100));
+    }
+    if (description !== undefined) {
+        updates.push('description = ?');
+        params.push(description ? String(description).slice(0, 2000) : null);
+    }
+    if (updates.length === 0) return 0;
+    params.push(deckId, userId);
+    const [result] = await db.execute(
+        `UPDATE flashcard_decks SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+        params
+    );
+    return result.affectedRows;
+}
+
+/**
+ * Liệt kê tất cả vocab trong deck (KHÔNG random, KHÔNG limit). Dùng cho trang
+ * quản lý items của deck. Trả null nếu deck không thuộc user.
+ */
+async function listItems(deckId, userId) {
+    if (!await assertOwner(deckId, userId)) return null;
+    const [rows] = await db.execute(
+        `SELECT v.id, v.simplified, v.traditional, v.pinyin, v.han_viet,
+                v.meaning_vi, v.meaning_en, v.hsk_level, v.audio_url,
+                fdi.added_at
+           FROM flashcard_deck_items fdi
+           JOIN vocabulary v ON v.id = fdi.vocab_id
+          WHERE fdi.deck_id = ?
+          ORDER BY fdi.added_at DESC, v.id DESC`,
+        [deckId]
+    );
+    return rows;
+}
+
 async function deleteDeck(deckId, userId) {
     const [result] = await db.execute(
         'DELETE FROM flashcard_decks WHERE id = ? AND user_id = ?',
@@ -171,5 +216,7 @@ module.exports = {
     addItem,
     removeItem,
     deleteDeck,
+    updateDeck,
+    listItems,
     getSession,
 };

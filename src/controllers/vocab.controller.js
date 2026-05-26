@@ -301,10 +301,14 @@ async function update(req, res) {
 
 /**
  * DELETE /api/vocab/:id (Admin)
+ *
+ * Query `?force=true` → bỏ qua check reference, dùng FK ON DELETE CASCADE
+ * (flashcard_deck_items, notebook_items, lesson_vocabulary đều cascade trên
+ * vocabulary.id). Sau khi xóa, recompute `flashcard_decks.card_count` cho các
+ * deck có chứa vocab này (cascade trigger không tự update cached count).
  */
 async function deleteVocab(req, res) {
     try {
-        // Đếm reference từ 3 nguồn — bảng nào không tồn tại thì coi như 0.
         async function safeCount(sql, params) {
             try {
                 const [[row]] = await db.execute(sql, params);
@@ -314,31 +318,64 @@ async function deleteVocab(req, res) {
                 throw e;
             }
         }
-        const id = req.params.id;
-        const [notebookCnt, flashcardCnt, lessonCnt] = await Promise.all([
-            safeCount('SELECT COUNT(*) AS cnt FROM notebook_items WHERE vocabulary_id = ?', [id]),
-            safeCount('SELECT COUNT(*) AS cnt FROM flashcard_deck_items WHERE vocab_id = ?', [id]),
-            safeCount('SELECT COUNT(*) AS cnt FROM lesson_vocabulary WHERE vocabulary_id = ?', [id]),
-        ]);
-        const total = notebookCnt + flashcardCnt + lessonCnt;
-        if (total > 0) {
-            const parts = [];
-            if (notebookCnt) parts.push(`${notebookCnt} sổ tay`);
-            if (flashcardCnt) parts.push(`${flashcardCnt} flashcard`);
-            if (lessonCnt) parts.push(`${lessonCnt} bài học`);
-            return res.status(409).json({
-                success: false,
-                code: 'VOCAB_IN_USE',
-                message: `Từ vựng đang được dùng ở: ${parts.join(', ')}. Không thể xóa.`,
-                data: { notebookCnt, flashcardCnt, lessonCnt },
-            });
+        async function safeQuery(sql, params) {
+            try {
+                const [rows] = await db.execute(sql, params);
+                return rows;
+            } catch (e) {
+                if (e.code === 'ER_NO_SUCH_TABLE') return [];
+                throw e;
+            }
         }
+        const id = req.params.id;
+        const force = req.query.force === 'true' || req.query.force === '1';
+
+        if (!force) {
+            const [notebookCnt, flashcardCnt, lessonCnt] = await Promise.all([
+                safeCount('SELECT COUNT(*) AS cnt FROM notebook_items WHERE vocabulary_id = ?', [id]),
+                safeCount('SELECT COUNT(*) AS cnt FROM flashcard_deck_items WHERE vocab_id = ?', [id]),
+                safeCount('SELECT COUNT(*) AS cnt FROM lesson_vocabulary WHERE vocabulary_id = ?', [id]),
+            ]);
+            const total = notebookCnt + flashcardCnt + lessonCnt;
+            if (total > 0) {
+                const parts = [];
+                if (notebookCnt) parts.push(`${notebookCnt} sổ tay`);
+                if (flashcardCnt) parts.push(`${flashcardCnt} flashcard`);
+                if (lessonCnt) parts.push(`${lessonCnt} bài học`);
+                return res.status(409).json({
+                    success: false,
+                    code: 'VOCAB_IN_USE',
+                    message: `Từ vựng đang được dùng ở: ${parts.join(', ')}. Truyền ?force=true để xóa kèm.`,
+                    data: { notebookCnt, flashcardCnt, lessonCnt },
+                });
+            }
+        }
+
+        // Lấy danh sách deck cần recompute card_count TRƯỚC khi cascade xóa.
+        const affectedDecks = force
+            ? await safeQuery('SELECT DISTINCT deck_id FROM flashcard_deck_items WHERE vocab_id = ?', [id])
+            : [];
 
         const affected = await VocabModel.deleteById(id);
         if (affected === 0) {
             return res.status(404).json({ success: false, message: 'Vocabulary not found' });
         }
-        res.json({ success: true, message: 'Vocabulary deleted' });
+
+        // Sau cascade — sync lại card_count cho từng deck bị ảnh hưởng.
+        for (const row of affectedDecks) {
+            await db.execute(
+                `UPDATE flashcard_decks
+                    SET card_count = (SELECT COUNT(*) FROM flashcard_deck_items WHERE deck_id = ?)
+                  WHERE id = ?`,
+                [row.deck_id, row.deck_id]
+            ).catch(() => {});
+        }
+
+        res.json({
+            success: true,
+            message: force ? 'Đã xóa từ vựng và mọi reference liên quan' : 'Vocabulary deleted',
+            forced: force,
+        });
     } catch (err) {
         console.error('Delete vocab error:', err);
         res.status(500).json({ success: false, message: 'Failed to delete vocabulary', error: err.message });

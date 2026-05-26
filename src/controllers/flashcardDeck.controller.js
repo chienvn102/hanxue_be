@@ -63,6 +63,29 @@ exports.removeItem = async (req, res) => {
     }
 };
 
+exports.updateDeck = async (req, res) => {
+    try {
+        const affected = await FlashcardDeck.updateDeck(req.params.id, req.user.userId, req.body || {});
+        if (!affected) return res.status(404).json({ success: false, message: 'Deck not found hoặc không có thay đổi' });
+        res.json({ success: true });
+    } catch (error) {
+        if (error.status === 400) return res.status(400).json({ success: false, message: error.message });
+        console.error('Update flashcard deck error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+exports.listItems = async (req, res) => {
+    try {
+        const rows = await FlashcardDeck.listItems(req.params.id, req.user.userId);
+        if (rows === null) return res.status(404).json({ success: false, message: 'Deck not found' });
+        res.json({ success: true, data: rows.map(r => ({ ...formatCard(r), addedAt: r.added_at })) });
+    } catch (error) {
+        console.error('List flashcard deck items error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
 exports.deleteDeck = async (req, res) => {
     try {
         const affected = await FlashcardDeck.deleteDeck(req.params.id, req.user.userId);

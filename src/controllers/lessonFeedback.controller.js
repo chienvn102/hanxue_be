@@ -27,6 +27,32 @@ async function getUserRole(userId) {
     } catch { return 'user'; }
 }
 
+/**
+ * Hai hệ auth admin tách biệt:
+ *   - `admins` table (adminMiddleware → req.admin.id) — dùng cho admin panel
+ *   - `users` table (authMiddleware → req.user.userId) — dùng cho user-side
+ *
+ * `lesson_feedback.user_id` là FK NOT NULL đến `users.id`. Khi admin trả lời
+ * qua admin panel (adminToken), không có row tương ứng trong `users`. Hàm này
+ * tạo lazy 1 "shadow user" với email `admin-<adminId>@hanxue.admin` + role='admin'
+ * + password_hash='' (vô hiệu — không ai login được qua user-side). Lần sau
+ * cùng admin reply sẽ tái dùng row đó.
+ *
+ * Idempotent: return users.id để dùng làm FK.
+ */
+async function ensureAdminShadowUser(adminId, adminUsername) {
+    const email = `admin-${adminId}@hanxue.admin`;
+    const [existing] = await db.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+    if (existing[0]) return existing[0].id;
+    const displayName = adminUsername || `Admin ${adminId}`;
+    const [result] = await db.execute(
+        `INSERT INTO users (email, password_hash, role, is_active, display_name, email_verified)
+         VALUES (?, '', 'admin', 1, ?, 1)`,
+        [email, displayName]
+    );
+    return result.insertId;
+}
+
 async function notifyAdminsOfBug({ feedbackId, lessonId, preview }) {
     try {
         const [rows] = await db.execute(
@@ -191,25 +217,27 @@ exports.adminHide = async (req, res) => {
 
 /**
  * Admin reply — creates a new lesson_feedback row as a reply to `fid`.
- * Uses the calling admin's user_id, marks `is_admin_reply = 1`.
+ * Uses adminToken (req.admin from admin.middleware). Resolves to a "shadow
+ * user" in `users` table via `ensureAdminShadowUser` because the FK
+ * `lesson_feedback.user_id` points to `users.id`, not `admins.id`.
  * Notifies the original author via push.
  */
 exports.adminReply = async (req, res) => {
     try {
         const fid = parseInt(req.params.fid, 10);
-        // Admin endpoints use user authMiddleware + role check (see route file).
-        // req.user.userId is a valid users.id, safe to use as FK author.
-        const adminUserId = req.user?.userId;
-        if (!adminUserId) return res.status(401).json({ success: false, message: 'Cần đăng nhập' });
+        const adminId = req.admin?.id;
+        if (!adminId) return res.status(401).json({ success: false, message: 'Cần đăng nhập admin' });
         const content = String(req.body?.content || '').trim();
         if (!content) return res.status(400).json({ success: false, message: 'Nội dung trả lời trống' });
 
         const parent = await model.findById(fid);
         if (!parent) return res.status(404).json({ success: false, message: 'Không tìm thấy phản hồi gốc' });
 
+        const shadowUserId = await ensureAdminShadowUser(adminId, req.admin?.username);
+
         const replyId = await model.create({
             lessonId: parent.lesson_id,
-            userId: adminUserId,
+            userId: shadowUserId,
             kind: 'comment',
             sectionType: parent.section_type,
             content,
