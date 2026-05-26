@@ -11,11 +11,17 @@ const db = require('../config/database');
 const gcs = require('./gcs.service');
 const gemini = require('./gemini.service');
 
-const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-2.5-pro';
+const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-2.5-flash';
 const IMPORT_LOCATION = process.env.HSK_IMPORT_LOCATION || 'global';
 const MAX_RAW_TEXT_CHARS = parseInt(process.env.HSK_IMPORT_MAX_RAW_TEXT_CHARS || '180000', 10);
 const MAX_OUTPUT_TOKENS = parseInt(process.env.HSK_IMPORT_MAX_OUTPUT_TOKENS || '32768', 10);
 const IMPORT_TIMEOUT_MS = parseInt(process.env.HSK_IMPORT_TIMEOUT_MS || '180000', 10);
+const IMPORT_THINKING_BUDGET = (() => {
+    const raw = process.env.HSK_IMPORT_THINKING_BUDGET;
+    if (raw === undefined || raw === '') return 0;
+    const parsed = parseInt(raw, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+})();
 
 const ALLOWED_QUESTION_TYPES = new Set([
     'image_match',
@@ -58,7 +64,7 @@ const HSK4_SECTION_PLANS = [
         duration_seconds: 1800,
         range: '1-45',
         expectedCount: 45,
-        maxOutputTokens: 18000,
+        maxOutputTokens: 32000,
         guide: [
             'Questions 1-10: true_false, use statement + transcript, correct_answer A for TRUE and B for FALSE.',
             'Questions 11-45: multiple_choice, use options A-D where available, transcript hidden in result only.',
@@ -73,7 +79,7 @@ const HSK4_SECTION_PLANS = [
         duration_seconds: 2400,
         range: '46-85',
         expectedCount: 40,
-        maxOutputTokens: 18000,
+        maxOutputTokens: 32000,
         guide: [
             'Questions 46-55: word_bank_fill. Create word_bank groups A-F and set group_ref.',
             'Questions 56-65: sentence_order.',
@@ -88,7 +94,7 @@ const HSK4_SECTION_PLANS = [
         duration_seconds: 1500,
         range: '86-100',
         expectedCount: 15,
-        maxOutputTokens: 10000,
+        maxOutputTokens: 16000,
         guide: [
             'Questions 86-95: sentence_assembly. question_text must be chunks separated by " / ".',
             'Questions 96-100: image_keyword_sentence. If image cannot be extracted, leave question_image empty and set meta.keyword.',
@@ -450,13 +456,14 @@ function extractJsonObject(text, label = 'AI response') {
 
 async function generateImportJson(prompt, { label, maxOutputTokens }) {
     const request = async (content, attempt) => {
-        const { text } = await gemini.chat([{ role: 'user', content }], {
+        const { text, finishReason, usage } = await gemini.chat([{ role: 'user', content }], {
             model: IMPORT_MODEL,
             location: IMPORT_LOCATION,
             temperature: 0,
             maxOutputTokens,
             timeoutMs: IMPORT_TIMEOUT_MS,
             responseMimeType: 'application/json',
+            thinkingBudget: IMPORT_THINKING_BUDGET,
             systemInstruction: 'Return exactly one valid JSON object. Do not include markdown, comments, or prose outside JSON.',
         });
 
@@ -465,7 +472,10 @@ async function generateImportJson(prompt, { label, maxOutputTokens }) {
         } catch (error) {
             const preview = previewText(text, 700);
             error.aiResponsePreview = preview;
+            error.finishReason = finishReason;
+            error.usage = usage;
             console.error(`[hskImport] ${label} invalid JSON attempt ${attempt}:`, error.message);
+            console.error(`[hskImport] ${label} finishReason=${finishReason || 'null'} usage=${JSON.stringify(usage || {})}`);
             console.error(`[hskImport] ${label} response preview attempt ${attempt}:`, preview);
             throw error;
         }
@@ -489,6 +499,12 @@ async function generateImportJson(prompt, { label, maxOutputTokens }) {
             secondError.cause = firstError;
             if (!secondError.aiResponsePreview && firstError.aiResponsePreview) {
                 secondError.aiResponsePreview = firstError.aiResponsePreview;
+            }
+            if (!secondError.finishReason && firstError.finishReason) {
+                secondError.finishReason = firstError.finishReason;
+            }
+            if (!secondError.usage && firstError.usage) {
+                secondError.usage = firstError.usage;
             }
             throw secondError;
         }
@@ -878,6 +894,12 @@ async function processJob(jobId, files, input) {
         });
     } catch (error) {
         const errorList = [error.message];
+        if (error.finishReason) {
+            errorList.push(`AI finishReason: ${error.finishReason}`);
+        }
+        if (error.usage) {
+            errorList.push(`AI usage: ${JSON.stringify(error.usage)}`);
+        }
         if (error.aiResponsePreview) {
             errorList.push(`AI response preview: ${error.aiResponsePreview}`);
         }

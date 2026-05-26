@@ -151,6 +151,7 @@ async function chat(messages, {
     responseMimeType,
     responseSchema,
     responseJsonSchema,
+    thinkingBudget,
 } = {}) {
     try {
         const ai = getClient(location);
@@ -167,6 +168,9 @@ async function chat(messages, {
         if (responseMimeType) config.responseMimeType = responseMimeType;
         if (responseSchema) config.responseSchema = responseSchema;
         if (responseJsonSchema) config.responseJsonSchema = responseJsonSchema;
+        if (typeof thinkingBudget === 'number') {
+            config.thinkingConfig = { thinkingBudget };
+        }
         const safety = getSafetySettings();
         if (safety) config.safetySettings = safety;
         if (tools) config.tools = tools;
@@ -177,9 +181,11 @@ async function chat(messages, {
             'Gemini'
         );
 
+        const finishReason = result?.candidates?.[0]?.finishReason || null;
         return {
             text: extractText(result),
             usage: result.usageMetadata || null,
+            finishReason,
             raw: result,
         };
     } catch (error) {
