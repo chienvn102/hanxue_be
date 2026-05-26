@@ -551,11 +551,19 @@ async function getExamResult(req, res) {
                 durationMinutes: exam.duration_minutes,
                 sections: exam.sections.map(section => ({
                     ...section,
+                    groups: section.groups || [],
                     questions: section.questions.map(q => ({
                         id: q.id,
+                        groupId: q.group_id,
                         questionNumber: q.question_number,
                         questionType: q.question_type,
                         questionText: q.question_text,
+                        // Bổ sung 3 field thiếu trước đây — exam mode (H41328 etc.)
+                        // không có questionText cho true_false, mà nội dung nằm ở
+                        // statement; reading có passage; listening có transcript.
+                        statement: q.statement,
+                        passage: q.passage,
+                        transcript: q.transcript,
                         questionImage: q.question_image,
                         options: q.options,
                         optionImages: q.option_images,
