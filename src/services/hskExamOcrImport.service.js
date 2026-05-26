@@ -18,9 +18,9 @@ const MAX_OUTPUT_TOKENS = parseInt(process.env.HSK_IMPORT_MAX_OUTPUT_TOKENS || '
 const IMPORT_TIMEOUT_MS = parseInt(process.env.HSK_IMPORT_TIMEOUT_MS || '180000', 10);
 const IMPORT_THINKING_BUDGET = (() => {
     const raw = process.env.HSK_IMPORT_THINKING_BUDGET;
-    if (raw === undefined || raw === '') return 0;
+    if (raw === undefined || raw === '') return undefined;
     const parsed = parseInt(raw, 10);
-    return Number.isNaN(parsed) ? 0 : parsed;
+    return Number.isNaN(parsed) ? undefined : parsed;
 })();
 
 const ALLOWED_QUESTION_TYPES = new Set([
@@ -289,7 +289,11 @@ function buildPrompt({ title, hskLevel, examType, pdfText, answerText }) {
         'Bạn là bộ import đề thi HSK cho hệ thống HanXue. Trả về CHỈ JSON hợp lệ, không markdown.',
         '',
         'Mục tiêu: chuyển nội dung đề PDF + file đáp án thành JSON import đúng schema HanXue, giữ đúng form đề gốc.',
-        'Không được tự tạo câu hỏi ngoài nội dung file. Nếu thiếu dữ liệu, để field rỗng và thêm warning.',
+        'QUY TẮC TUYỆT ĐỐI:',
+        '- KHÔNG BỊA NỘI DUNG. Mọi text (statement, transcript, question_text, options) phải copy nguyên văn từ PDF TEXT phía dưới.',
+        '- Nếu không tìm thấy nội dung cho câu nào → để field rỗng và push warning "Không tìm thấy nội dung câu <N> trong PDF".',
+        '- correct_answer LẤY TỪ ANSWER TEXT, map theo question_number (không map theo thứ tự xuất hiện). VD ANSWER TEXT "1.B 2.A 3.D" → câu 1=B, câu 2=A, câu 3=D.',
+        '- KHÔNG dịch sang tiếng Việt. Giữ nguyên tiếng Trung như trong PDF.',
         '',
         buildBlueprint(hskLevel),
         '',
@@ -366,7 +370,12 @@ function buildSectionPrompt({ hskLevel, pdfText, answerText }, plan) {
         'Bạn là bộ import đề thi HSK cho hệ thống HanXue. Trả về CHỈ JSON hợp lệ, không markdown.',
         '',
         `Nhiệm vụ: parse riêng section ${plan.section_type} của HSK${hskLevel}, câu ${plan.range}.`,
-        'Giữ đúng form đề gốc. Không tự tạo câu hỏi ngoài nội dung file. Nếu thiếu dữ liệu, để field rỗng và thêm warning.',
+        'QUY TẮC TUYỆT ĐỐI:',
+        '- KHÔNG BỊA NỘI DUNG. Mọi text (statement, transcript, question_text, options) phải copy nguyên văn từ PDF TEXT phía dưới.',
+        '- Nếu không tìm thấy nội dung cho câu nào → để field rỗng và push warning "Không tìm thấy nội dung câu <N> trong PDF". Tuyệt đối KHÔNG đoán hay tự nghĩ ra.',
+        '- correct_answer LẤY TỪ ANSWER TEXT, map theo question_number (không map theo thứ tự xuất hiện). Ví dụ ANSWER TEXT "1.B 2.A 3.D" nghĩa là câu 1=B, câu 2=A, câu 3=D.',
+        '- Với listening true_false: statement = câu in trên đề (ngắn, ~10-30 ký tự), transcript = đoạn audio đầy đủ (~50-200 ký tự). KHÔNG đảo ngược 2 field này.',
+        '- KHÔNG dịch sang tiếng Việt. Giữ nguyên tiếng Trung như trong PDF.',
         '',
         plan.guide,
         '',
