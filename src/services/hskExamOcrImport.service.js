@@ -14,13 +14,13 @@ const gemini = require('./gemini.service');
 const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-2.5-flash';
 const IMPORT_LOCATION = process.env.HSK_IMPORT_LOCATION || 'global';
 const MAX_RAW_TEXT_CHARS = parseInt(process.env.HSK_IMPORT_MAX_RAW_TEXT_CHARS || '180000', 10);
-const MAX_OUTPUT_TOKENS = parseInt(process.env.HSK_IMPORT_MAX_OUTPUT_TOKENS || '32768', 10);
+const MAX_OUTPUT_TOKENS = parseInt(process.env.HSK_IMPORT_MAX_OUTPUT_TOKENS || '65536', 10);
 const IMPORT_TIMEOUT_MS = parseInt(process.env.HSK_IMPORT_TIMEOUT_MS || '180000', 10);
 const IMPORT_THINKING_BUDGET = (() => {
     const raw = process.env.HSK_IMPORT_THINKING_BUDGET;
-    if (raw === undefined || raw === '') return undefined;
+    if (raw === undefined || raw === '') return 8192;
     const parsed = parseInt(raw, 10);
-    return Number.isNaN(parsed) ? undefined : parsed;
+    return Number.isNaN(parsed) ? 8192 : parsed;
 })();
 
 const ALLOWED_QUESTION_TYPES = new Set([
@@ -64,7 +64,7 @@ const HSK4_SECTION_PLANS = [
         duration_seconds: 1800,
         range: '1-45',
         expectedCount: 45,
-        maxOutputTokens: 32000,
+        maxOutputTokens: 48000,
         guide: [
             'Questions 1-10: true_false, use statement + transcript, correct_answer A for TRUE and B for FALSE.',
             'Questions 11-45: multiple_choice, use options A-D where available, transcript hidden in result only.',
@@ -79,7 +79,7 @@ const HSK4_SECTION_PLANS = [
         duration_seconds: 2400,
         range: '46-85',
         expectedCount: 40,
-        maxOutputTokens: 32000,
+        maxOutputTokens: 48000,
         guide: [
             'Questions 46-55: word_bank_fill. Create word_bank groups A-F and set group_ref.',
             'Questions 56-65: sentence_order.',
@@ -94,7 +94,7 @@ const HSK4_SECTION_PLANS = [
         duration_seconds: 1500,
         range: '86-100',
         expectedCount: 15,
-        maxOutputTokens: 16000,
+        maxOutputTokens: 24000,
         guide: [
             'Questions 86-95: sentence_assembly. question_text must be chunks separated by " / ".',
             'Questions 96-100: image_keyword_sentence. If image cannot be extracted, leave question_image empty and set meta.keyword.',
