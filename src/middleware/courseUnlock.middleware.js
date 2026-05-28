@@ -19,8 +19,14 @@ function lockedResponse(res, progress) {
     });
 }
 
+// Gating được tắt — học viên truy cập được mọi khóa/bài không cần hoàn thành
+// khóa trước. Bật lại bằng cách đặt env COURSE_UNLOCK_ENFORCEMENT=true.
+const UNLOCK_ENFORCED = process.env.COURSE_UNLOCK_ENFORCEMENT === 'true';
+
 async function assertCourseUnlocked(req, res, next, courseId) {
     try {
+        if (!UNLOCK_ENFORCED) return next();
+
         // User JWT payload có role 'user'|'admin' (xem auth.controller.js).
         // Admin-token routes dùng adminMiddleware riêng (set req.admin),
         // còn ở đây ta đứng sau authMiddleware nên check qua req.user.role.
