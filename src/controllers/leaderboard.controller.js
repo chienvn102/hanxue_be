@@ -5,6 +5,7 @@
  */
 
 const db = require('../config/database');
+const { resolveAudioUrl } = require('../services/audioUrl.service');
 
 const PERIOD_DAYS = {
     week: 7,
@@ -163,6 +164,12 @@ async function getLeaderboard(req, res) {
             });
         }
 
+        // Resolve avatar refs (gs://… → signed URL hoặc relative path nguyên trạng).
+        // Profile endpoint dùng cùng resolver nên avatar hiển thị đồng nhất.
+        await Promise.all(rows.map(async row => {
+            row.avatar_url = await resolveAudioUrl(row.avatar_url);
+        }));
+
         const ranked = rows.map((row, index) => formatRank(row, index + 1, me));
 
         let mePosition = null;
@@ -174,6 +181,7 @@ async function getLeaderboard(req, res) {
                     const meXp = period === 'all' ? Number(meRow.total_xp || 0) : await getPeriodXp(me, period);
                     if (meXp > 0) {
                         meRow.total_xp = meXp;
+                        meRow.avatar_url = await resolveAudioUrl(meRow.avatar_url);
                         const rank = await getUserRank({
                             userId: me,
                             period,
