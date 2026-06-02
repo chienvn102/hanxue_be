@@ -148,6 +148,7 @@ async function runWithTools(messages, ctx, options = {}) {
         const result = await gemini.chat(conversation, {
             tools,
             systemInstruction: options.systemInstruction,
+            cachedContent: options.cachedContent,
             temperature: options.temperature ?? 0.5,
             maxOutputTokens: options.maxOutputTokens || 2048,
         });

@@ -1,11 +1,12 @@
 /**
- * DEPRECATED: Groq AI Service.
+ * Groq AI Service (LPU inference — nhanh hơn Gemini cho output ngắn/JSON).
  *
- * HanXue now uses services/gemini.service.js (Vertex AI Gemini). This file is
- * kept only as a rollback shim during deployment verification.
+ * Dùng cho translate mini-game (sinh câu + chấm điểm). Chat AI (小明/小红) vẫn
+ * chạy trên services/gemini.service.js (Vertex AI Gemini + tools/caching).
  *
- * Wrapper for Groq API chat completions
- * Features: timeout, 1x retry on transient errors, JSON response guard
+ * Wrapper cho Groq API chat completions.
+ * Features: timeout, retry/backoff on transient errors, JSON response guard,
+ * optional JSON mode (response_format) + per-call model/maxTokens/temperature.
  *
  * Error convention:
  *   - throw GroqError with { publicMessage, status, retryable }
@@ -13,7 +14,9 @@
  */
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Model mặc định; override per-call qua options.model hoặc env GROQ_MODEL.
+// llama-3.1-8b-instant nhanh hơn nữa cho prompt-gen nếu cần.
+const DEFAULT_GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_TIMEOUT_MS = 60000; // 60s — llama-3.3-70b thường mất 10-25s, peak có thể 30-45s
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_RETRIES = 3;
@@ -49,9 +52,10 @@ function getPublicMessage(status, internalMsg) {
 /**
  * Internal: single fetch attempt to Groq API
  * @param {Array<{role: string, content: string}>} messages
+ * @param {{model?: string, maxTokens?: number, temperature?: number, jsonMode?: boolean}} [options]
  * @returns {Promise<{text: string, tokensUsed: number}>}
  */
-async function _fetchGroq(messages) {
+async function _fetchGroq(messages, options = {}) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
         const err = new Error('GROQ_API_KEY chưa được cấu hình');
@@ -64,6 +68,17 @@ async function _fetchGroq(messages) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GROQ_TIMEOUT_MS);
 
+    const body = {
+        model: options.model || DEFAULT_GROQ_MODEL,
+        messages,
+        max_tokens: typeof options.maxTokens === 'number' ? options.maxTokens : 1000,
+        temperature: typeof options.temperature === 'number' ? options.temperature : 0.7,
+    };
+    // JSON mode: Groq yêu cầu prompt có chữ "json" — các prompt translate đã thỏa.
+    if (options.jsonMode) {
+        body.response_format = { type: 'json_object' };
+    }
+
     let res;
     try {
         res = await fetch(GROQ_API_URL, {
@@ -72,12 +87,7 @@ async function _fetchGroq(messages) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
             },
-            body: JSON.stringify({
-                model: GROQ_MODEL,
-                messages,
-                max_tokens: 1000,
-                temperature: 0.7,
-            }),
+            body: JSON.stringify(body),
             signal: controller.signal,
         });
     } catch (fetchErr) {
@@ -132,17 +142,18 @@ async function _fetchGroq(messages) {
 }
 
 /**
- * Send messages to Groq API with 1x retry on transient errors
+ * Send messages to Groq API with retry/backoff on transient errors
  * @param {Array<{role: string, content: string}>} messages - Full message array including system prompt
  * @param {string} [requestId] - Optional request ID for log correlation
+ * @param {{model?: string, maxTokens?: number, temperature?: number, jsonMode?: boolean}} [options]
  * @returns {Promise<{text: string, tokensUsed: number}>}
  */
-async function sendMessage(messages, requestId) {
+async function sendMessage(messages, requestId, options = {}) {
     const logPrefix = requestId ? `[${requestId}]` : '[groq]';
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const result = await _fetchGroq(messages);
+            const result = await _fetchGroq(messages, options);
             if (attempt > 0) {
                 console.log(`${logPrefix} Groq retry #${attempt} succeeded`);
             }

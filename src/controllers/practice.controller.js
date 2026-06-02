@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const practiceTexts = require('../config/practiceTexts');
 const db = require('../config/database');
 const gemini = require('../services/gemini.service');
+const groq = require('../services/groq');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
 const ChatModel = require('../models/chat.model');
@@ -42,6 +43,22 @@ function genRequestId(prefix) {
 
 function genSessionToken() {
     return crypto.randomBytes(16).toString('hex'); // 32 hex chars
+}
+
+// Translate game chạy Groq-first (LPU nhanh hơn Gemini cho output ngắn/JSON),
+// fallback Gemini nếu Groq tắt/lỗi/thiếu key. Bật mặc định; tắt qua env.
+const GROQ_TRANSLATE_ENABLED = process.env.GROQ_TRANSLATE_ENABLED !== 'false';
+
+async function translateAi(messages, requestId, opts = {}) {
+    const canGroq = GROQ_TRANSLATE_ENABLED && process.env.GROQ_API_KEY;
+    if (canGroq) {
+        try {
+            return await groq.sendMessage(messages, requestId, opts);
+        } catch (err) {
+            console.error(`[${requestId}] Groq translate failed, fallback Gemini:`, err.message);
+        }
+    }
+    return gemini.sendMessage(messages, requestId);
 }
 
 // =====================================================================
@@ -338,7 +355,11 @@ async function translatePrompt(req, res) {
             { role: 'user', content: 'Sinh 1 câu mới.' }
         ];
 
-        const { text } = await gemini.sendMessage(messages, requestId);
+        const { text } = await translateAi(messages, requestId, {
+            temperature: 0.8,
+            maxTokens: 400,
+            jsonMode: true,
+        });
         let parsed;
         try {
             parsed = JSON.parse(unwrapJsonFence(text));
@@ -473,7 +494,11 @@ async function translateGrade(req, res) {
             }
         ];
 
-        const { text } = await gemini.sendMessage(messages, requestId);
+        const { text } = await translateAi(messages, requestId, {
+            temperature: 0.2,
+            maxTokens: 1800,
+            jsonMode: true,
+        });
         let parsed;
         try {
             parsed = JSON.parse(unwrapJsonFence(text));

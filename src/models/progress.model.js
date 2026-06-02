@@ -158,6 +158,25 @@ async function getRecentMistakes(userId, days = 7) {
     return rows;
 }
 
+/**
+ * Lay tu user da hoc nhung con yeu (hay sai, chua mastered). Chinh xac hon
+ * findNotMasteredByUser vi chi lay tu user DA gap (times_seen > 0), khong lan
+ * tu chua hoc. Dung de tiem vao chat prompt (小明 bam diem yeu cua user).
+ */
+async function getWeakVocab(userId, limit = 8) {
+    const cappedLimit = Math.min(Math.max(parseInt(limit, 10) || 8, 1), 20);
+    const [rows] = await db.execute(
+        `SELECT v.simplified, v.pinyin, v.meaning_vi, p.times_wrong, p.mastery_level
+           FROM user_vocabulary_progress p
+           JOIN vocabulary v ON v.id = p.vocabulary_id
+          WHERE p.user_id = ? AND p.mastery_level < 3 AND p.times_seen > 0
+          ORDER BY p.times_wrong DESC, p.times_seen DESC
+          LIMIT ?`,
+        [userId, cappedLimit]
+    );
+    return rows;
+}
+
 module.exports = {
     getNewVocab,
     getStats,
@@ -166,5 +185,6 @@ module.exports = {
     getProgressWithVocab,
     createProgress,
     updateProgress,
-    getRecentMistakes
+    getRecentMistakes,
+    getWeakVocab
 };

@@ -152,6 +152,7 @@ async function chat(messages, {
     responseSchema,
     responseJsonSchema,
     thinkingBudget,
+    cachedContent,
 } = {}) {
     try {
         const ai = getClient(location);
@@ -164,7 +165,13 @@ async function chat(messages, {
             temperature,
             maxOutputTokens,
         };
-        if (finalSystemInstruction) config.systemInstruction = finalSystemInstruction;
+        // cachedContent đã chứa systemInstruction → KHÔNG set lại (Vertex báo lỗi
+        // nếu set cả hai). Khi không có cache thì dùng systemInstruction inline.
+        if (cachedContent) {
+            config.cachedContent = cachedContent;
+        } else if (finalSystemInstruction) {
+            config.systemInstruction = finalSystemInstruction;
+        }
         if (responseMimeType) config.responseMimeType = responseMimeType;
         if (responseSchema) config.responseSchema = responseSchema;
         if (responseJsonSchema) config.responseJsonSchema = responseJsonSchema;
@@ -193,6 +200,37 @@ async function chat(messages, {
         err.publicMessage = error.publicMessage || 'Loi ket noi AI. Vui long thu lai sau.';
         err.status = error.status || 502;
         throw err;
+    }
+}
+
+/**
+ * Tao explicit context cache cho phan STATIC cua prompt (persona + rules +
+ * app catalog). Tra ve cache name (truyen vao chat() qua `cachedContent`) hoac
+ * `null` neu loi — vd prefix duoi nguong token toi thieu (~1024 cho 2.5 flash/
+ * flash-lite). Khong throw: caller tu fallback systemInstruction inline.
+ */
+async function createContextCache({
+    systemInstruction,
+    model = DEFAULT_MODEL,
+    location = DEFAULT_LOCATION,
+    ttlSeconds = 3600,
+} = {}) {
+    try {
+        if (!systemInstruction) return null;
+        const ai = getClient(location);
+        const cache = await ai.caches.create({
+            model,
+            config: {
+                systemInstruction: typeof systemInstruction === 'string'
+                    ? [{ text: systemInstruction }]
+                    : systemInstruction,
+                ttl: `${ttlSeconds}s`,
+            },
+        });
+        return cache?.name || null;
+    } catch (error) {
+        console.warn('[gemini] createContextCache failed (fallback inline systemInstruction):', error.message);
+        return null;
     }
 }
 
@@ -255,4 +293,5 @@ module.exports = {
     generateExamples,
     gradeTranslate,
     unwrapJsonFence,
+    createContextCache,
 };
