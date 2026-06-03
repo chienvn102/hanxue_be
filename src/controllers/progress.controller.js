@@ -1,14 +1,15 @@
 /**
  * Progress Controller
- * Tracks per-user vocabulary progress (times_seen / correct / wrong).
- *
- * SRS đã bị bỏ hoàn toàn (HF4.1). `submitReview` chỉ ghi nhận lượt đúng/sai
- * cho flashcard session — KHÔNG còn lên lịch ôn tập theo SM-2.
+ * Tracks per-user vocabulary progress (times_seen / correct / wrong) + SRS
+ * schedule (ease_factor / interval_days / repetitions / next_review) computed
+ * via shared srs.service (SM-2 simplified). SRS due items are surfaced by
+ * notificationScheduler for review reminders.
  */
 
 const ProgressModel = require('../models/progress.model');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
+const { nextSrs } = require('../services/srs.service');
 
 /**
  * Compute mastery_level (0–5) từ accuracy + total reviews. Đơn giản hoá thay
@@ -115,13 +116,19 @@ async function submitReview(req, res) {
 
         const isCorrect = quality >= 3;
         const current = await ProgressModel.getProgress(userId, vocabId);
+        const srs = nextSrs({
+            ease_factor: current?.ease_factor,
+            interval_days: current?.interval_days,
+            repetitions: current?.repetitions,
+        }, quality);
 
         if (!current) {
             const mastery = deriveMastery(1, isCorrect ? 1 : 0);
             await ProgressModel.createProgress(userId, vocabId, {
                 masteryLevel: mastery,
                 isCorrect,
-                responseMs: responseMs || null
+                responseMs: responseMs || null,
+                srs,
             });
         } else {
             const newSeen = (current.times_seen || 0) + 1;
@@ -133,7 +140,8 @@ async function submitReview(req, res) {
             await ProgressModel.updateProgress(userId, vocabId, {
                 masteryLevel: deriveMastery(newSeen, newCorrect),
                 isCorrect,
-                avgResponseMs: newAvgMs
+                avgResponseMs: newAvgMs,
+                srs,
             });
         }
 

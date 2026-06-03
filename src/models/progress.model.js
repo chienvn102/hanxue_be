@@ -101,25 +101,30 @@ async function getProgressWithVocab(userId, vocabId) {
 }
 
 /**
- * Insert first progress row. SRS columns (ease_factor / interval_days /
- * repetitions / next_review) giữ default DB để tương thích schema cũ.
+ * Insert first progress row. SRS payload (ease_factor / interval_days /
+ * repetitions / next_review) is optional — caller computes via srs.service.
  */
-async function createProgress(userId, vocabId, { masteryLevel, isCorrect, responseMs }) {
+async function createProgress(userId, vocabId, { masteryLevel, isCorrect, responseMs, srs }) {
     await db.execute(`
         INSERT INTO user_vocabulary_progress
         (user_id, vocabulary_id, mastery_level, times_seen, times_correct,
-         times_wrong, avg_response_ms, last_reviewed)
-        VALUES (?, ?, ?, 1, ?, ?, ?, NOW())
+         times_wrong, avg_response_ms, last_reviewed,
+         ease_factor, interval_days, repetitions, next_review)
+        VALUES (?, ?, ?, 1, ?, ?, ?, NOW(), ?, ?, ?, ?)
     `, [
         userId, vocabId,
         masteryLevel,
         isCorrect ? 1 : 0,
         isCorrect ? 0 : 1,
-        responseMs
+        responseMs,
+        srs?.ease_factor ?? 2.50,
+        srs?.interval_days ?? 0,
+        srs?.repetitions ?? 0,
+        srs?.next_review_at ?? null,
     ]);
 }
 
-async function updateProgress(userId, vocabId, { masteryLevel, isCorrect, avgResponseMs }) {
+async function updateProgress(userId, vocabId, { masteryLevel, isCorrect, avgResponseMs, srs }) {
     await db.execute(`
         UPDATE user_vocabulary_progress SET
             mastery_level = ?,
@@ -127,13 +132,21 @@ async function updateProgress(userId, vocabId, { masteryLevel, isCorrect, avgRes
             times_correct = times_correct + ?,
             times_wrong = times_wrong + ?,
             avg_response_ms = ?,
-            last_reviewed = NOW()
+            last_reviewed = NOW(),
+            ease_factor = ?,
+            interval_days = ?,
+            repetitions = ?,
+            next_review = ?
         WHERE user_id = ? AND vocabulary_id = ?
     `, [
         masteryLevel,
         isCorrect ? 1 : 0,
         isCorrect ? 0 : 1,
         avgResponseMs,
+        srs?.ease_factor ?? 2.50,
+        srs?.interval_days ?? 0,
+        srs?.repetitions ?? 0,
+        srs?.next_review_at ?? null,
         userId, vocabId
     ]);
 }

@@ -180,15 +180,14 @@ async function completeOnboarding(req, res) {
         const userId = req.user.userId;
         const user = await UserModel.findByIdWithPassword(userId);
         const profileData = normalizeProfileInput(req.body);
-        const code = String(req.body.code || '').trim();
         const newPassword = String(req.body.newPassword || '');
 
         if (!user || !user.is_active) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        if (!code || !newPassword) {
-            return res.status(400).json({ error: 'Verification code and password required' });
+        if (!newPassword) {
+            return res.status(400).json({ error: 'Password required' });
         }
 
         if (newPassword.length < 6) {
@@ -199,11 +198,6 @@ async function completeOnboarding(req, res) {
         const missingField = requiredFields.find((field) => profileData[field] === undefined);
         if (missingField) {
             return res.status(400).json({ error: 'Required profile fields missing' });
-        }
-
-        const codeResult = await verifyPasswordCode(userId, code, 'password_change');
-        if (!codeResult.valid) {
-            return res.status(400).json({ error: 'Invalid or expired verification code' });
         }
 
         const passwordHash = await bcrypt.hash(newPassword, 10);

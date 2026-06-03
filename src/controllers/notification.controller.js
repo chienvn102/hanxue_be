@@ -134,3 +134,73 @@ exports.markRead = async (req, res) => {
         res.status(500).json({ success: false, message: 'Server error' });
     }
 };
+
+// Allowed columns to update via PUT /preferences. Anything not in this list is
+// silently ignored — prevents arbitrary column writes.
+const PREF_ALLOWED = [
+    'daily_reminder_enabled',
+    'daily_reminder_time',
+    'streak_warning_enabled',
+    'level_up_enabled',
+    'course_update_enabled',
+    'srs_review_push_enabled',
+    'srs_review_email_enabled',
+];
+
+exports.getPreferences = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        // Ensure a row exists (defaults from schema).
+        await db.execute(
+            `INSERT IGNORE INTO notification_preferences (user_id) VALUES (?)`,
+            [userId]
+        );
+        const [rows] = await db.execute(
+            `SELECT daily_reminder_enabled, daily_reminder_time, streak_warning_enabled,
+                    level_up_enabled, course_update_enabled, timezone,
+                    srs_review_push_enabled, srs_review_email_enabled
+               FROM notification_preferences WHERE user_id = ?`,
+            [userId]
+        );
+        res.json({ success: true, data: rows[0] || null });
+    } catch (error) {
+        console.error('Get preferences error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+exports.updatePreferences = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const body = req.body || {};
+        const sets = [];
+        const params = [];
+
+        for (const key of PREF_ALLOWED) {
+            if (body[key] === undefined) continue;
+            sets.push(`${key} = ?`);
+            // Coerce booleans → 0/1 for TINYINT flags; leave string fields as-is.
+            const value = key.endsWith('_enabled') ? (body[key] ? 1 : 0) : body[key];
+            params.push(value);
+        }
+
+        if (!sets.length) {
+            return res.status(400).json({ success: false, message: 'No allowed fields to update' });
+        }
+
+        // Ensure row exists, then update.
+        await db.execute(
+            `INSERT IGNORE INTO notification_preferences (user_id) VALUES (?)`,
+            [userId]
+        );
+        params.push(userId);
+        await db.execute(
+            `UPDATE notification_preferences SET ${sets.join(', ')} WHERE user_id = ?`,
+            params
+        );
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Update preferences error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};

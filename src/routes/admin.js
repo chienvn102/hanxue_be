@@ -4,6 +4,7 @@ const adminAuthController = require('../controllers/adminAuth.controller');
 const adminMiddleware = require('../middleware/admin.middleware');
 const audioGenController = require('../controllers/audioGen.controller');
 const adminUserController = require('../controllers/adminUser.controller');
+const grammarQuizAdminController = require('../controllers/grammarQuizAdmin.controller');
 
 // Public admin routes
 router.post('/login', adminAuthController.login);
@@ -20,5 +21,12 @@ router.post('/hsk-questions/:id/gen-audio', adminMiddleware, audioGenController.
 router.post('/lessons/:id/gen-audio', adminMiddleware, audioGenController.genLessonAudio);
 router.post('/examples/:id/gen-audio', adminMiddleware, audioGenController.genExampleAudio);
 router.post('/gen-image', adminMiddleware, audioGenController.genImage);
+
+// Grammar quiz questions CRUD
+router.get('/grammar-quiz',        adminMiddleware, grammarQuizAdminController.list);
+router.get('/grammar-quiz/:id',    adminMiddleware, grammarQuizAdminController.getById);
+router.post('/grammar-quiz',       adminMiddleware, grammarQuizAdminController.create);
+router.put('/grammar-quiz/:id',    adminMiddleware, grammarQuizAdminController.update);
+router.delete('/grammar-quiz/:id', adminMiddleware, grammarQuizAdminController.delete);
 
 module.exports = router;

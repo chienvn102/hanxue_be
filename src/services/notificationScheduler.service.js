@@ -13,6 +13,7 @@
 
 const db = require('../config/database');
 const pushService = require('./push.service');
+const emailService = require('./email.service');
 
 let cron;
 try {
@@ -57,28 +58,85 @@ async function pushStreakReminder({ urgent } = {}) {
     })));
 }
 
+/**
+ * SRS due reminder — unions 3 progress sources (vocab + grammar + writing),
+ * filters by per-user preference flags, then dispatches push + (optional)
+ * email. Threshold: ≥5 items combined.
+ */
 async function pushSrsOverdueReminder() {
     try {
-        // Reuse SRS schema if available. If srs_reviews table missing, no-op.
         const [rows] = await db.execute(
-            `SELECT user_id, COUNT(*) AS due_cnt
-               FROM srs_reviews
-              WHERE next_review_at <= NOW()
-              GROUP BY user_id
-             HAVING due_cnt >= 10`
+            `SELECT t.user_id,
+                    SUM(t.c) AS due_cnt,
+                    SUM(IF(t.src='vocab',   t.c, 0)) AS vocab_due,
+                    SUM(IF(t.src='grammar', t.c, 0)) AS grammar_due,
+                    SUM(IF(t.src='writing', t.c, 0)) AS writing_due,
+                    COALESCE(p.srs_review_push_enabled,  1) AS push_enabled,
+                    COALESCE(p.srs_review_email_enabled, 0) AS email_enabled,
+                    u.email, u.display_name
+               FROM (
+                 SELECT user_id, COUNT(*) c, 'vocab' AS src
+                   FROM user_vocabulary_progress
+                  WHERE next_review IS NOT NULL AND next_review <= NOW()
+                  GROUP BY user_id
+                 UNION ALL
+                 SELECT user_id, COUNT(*) c, 'grammar' AS src
+                   FROM user_grammar_progress
+                  WHERE next_review_at IS NOT NULL AND next_review_at <= NOW()
+                  GROUP BY user_id
+                 UNION ALL
+                 SELECT user_id, COUNT(*) c, 'writing' AS src
+                   FROM writing_progress
+                  WHERE next_review_at IS NOT NULL AND next_review_at <= NOW()
+                  GROUP BY user_id
+               ) t
+               JOIN users u ON u.id = t.user_id AND u.is_active = 1
+          LEFT JOIN notification_preferences p ON p.user_id = t.user_id
+              GROUP BY t.user_id
+             HAVING due_cnt >= 5`
         );
-        console.log(`[scheduler] SRS overdue reminder: ${rows.length} users`);
-        await Promise.allSettled(rows.map(r => pushService.pushToUser(r.user_id, {
-            title: `Có ${r.due_cnt} từ chờ ôn`,
-            body: 'Ôn ngay để củng cố trí nhớ — chỉ 5 phút là xong.',
-            url: '/flashcard',
-            tag: 'srs-overdue',
-            type: 'srs_overdue',
-            icon: 'replay',
-        })));
+
+        console.log(`[scheduler] SRS due reminder: ${rows.length} users`);
+
+        await Promise.allSettled(rows.map(async (r) => {
+            const dueCnt = Number(r.due_cnt);
+            const breakdown = {
+                vocab: Number(r.vocab_due) || 0,
+                grammar: Number(r.grammar_due) || 0,
+                writing: Number(r.writing_due) || 0,
+            };
+            const parts = [];
+            if (breakdown.vocab)   parts.push(`${breakdown.vocab} từ`);
+            if (breakdown.grammar) parts.push(`${breakdown.grammar} ngữ pháp`);
+            if (breakdown.writing) parts.push(`${breakdown.writing} chữ`);
+            const body = parts.length
+                ? `${parts.join(' + ')} chờ ôn — vào ôn 5 phút để giữ trí nhớ.`
+                : 'Có mục chờ ôn — vào ôn 5 phút để giữ trí nhớ.';
+
+            const jobs = [];
+            if (Number(r.push_enabled) === 1) {
+                jobs.push(pushService.pushToUser(r.user_id, {
+                    title: `Có ${dueCnt} mục chờ ôn tập`,
+                    body,
+                    url: '/practice',
+                    tag: 'srs-review-reminder',
+                    type: 'srs_review',
+                    icon: 'replay',
+                }));
+            }
+            if (Number(r.email_enabled) === 1 && r.email) {
+                jobs.push(emailService.sendSrsDueEmail({
+                    email: r.email,
+                    displayName: r.display_name,
+                }, { dueCount: dueCnt, breakdown }).catch(e =>
+                    console.error(`[scheduler] SRS email failed user=${r.user_id}:`, e.message)
+                ));
+            }
+            await Promise.allSettled(jobs);
+        }));
     } catch (error) {
         if (error.code === 'ER_NO_SUCH_TABLE') return;
-        console.error('[scheduler] SRS overdue failed:', error.message);
+        console.error('[scheduler] SRS due failed:', error.message);
     }
 }
 
