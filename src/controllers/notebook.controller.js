@@ -1,4 +1,5 @@
 const Notebook = require('../models/notebook.model');
+const NotebookGrammar = require('../models/notebookGrammar.model');
 
 const notebookController = {
     // Get all notebooks for current user
@@ -200,6 +201,52 @@ const notebookController = {
             res.json({ success: true, data: ids });
         } catch (error) {
             console.error('Error getting saved vocab ids:', error);
+            res.status(500).json({ success: false, message: 'Lỗi server' });
+        }
+    },
+
+    // ---- Saved grammar points ("Ngữ pháp" tab) ----
+
+    getSavedGrammar: async (req, res) => {
+        try {
+            const items = await NotebookGrammar.getSaved(req.user.userId);
+            res.json({ success: true, data: items });
+        } catch (error) {
+            console.error('Error getting saved grammar:', error);
+            res.status(500).json({ success: false, message: 'Lỗi server' });
+        }
+    },
+
+    getSavedGrammarIds: async (req, res) => {
+        try {
+            const ids = await NotebookGrammar.getSavedGrammarIds(req.user.userId);
+            res.json({ success: true, data: ids });
+        } catch (error) {
+            console.error('Error getting saved grammar ids:', error);
+            res.status(500).json({ success: false, message: 'Lỗi server' });
+        }
+    },
+
+    toggleSaveGrammar: async (req, res) => {
+        try {
+            const { grammarId, save, note } = req.body || {};
+            const gid = Number.parseInt(grammarId, 10);
+            if (!Number.isFinite(gid)) {
+                return res.status(400).json({ success: false, message: 'grammarId không hợp lệ' });
+            }
+
+            if (save === false) {
+                await NotebookGrammar.removeGrammar(req.user.userId, gid);
+                return res.json({ success: true, saved: false, message: 'Đã bỏ lưu ngữ pháp' });
+            }
+
+            const result = await NotebookGrammar.addGrammar(req.user.userId, gid, note || null);
+            if (result.notFound) {
+                return res.status(404).json({ success: false, message: 'Không tìm thấy ngữ pháp' });
+            }
+            res.status(201).json({ success: true, saved: true, message: 'Đã lưu ngữ pháp vào sổ tay' });
+        } catch (error) {
+            console.error('Error toggling saved grammar:', error);
             res.status(500).json({ success: false, message: 'Lỗi server' });
         }
     }

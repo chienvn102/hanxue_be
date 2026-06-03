@@ -24,6 +24,7 @@ const groq = require('../services/groq');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
 const ChatModel = require('../models/chat.model');
+const grammarQuizModel = require('../models/grammarQuiz.model');
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MATCH_XP_PER_PAIR = 5;
@@ -36,6 +37,9 @@ const MATCH_XP_PER_PAIR = 5;
  */
 const matchSessions = new Map();
 const translateSessions = new Map();
+// quizSessions: token → { userId, questions: [{id, correctAnswer, grammarId, explanation, points}],
+//                         answers: { [questionId]: { correct, grammarId } }, finished, expiresAt }
+const quizSessions = new Map();
 
 function genRequestId(prefix) {
     return `${prefix}-${crypto.randomBytes(4).toString('hex')}`;
@@ -585,6 +589,161 @@ async function writeComplete(req, res) {
     }
 }
 
+// =====================================================================
+// Grammar Quiz — seeded MCQ linked to grammar points.
+// Anti-cheat: server holds correct answers; client never receives them on
+// /start. Grading + XP happen server-side. Mirrors match/translate sessions.
+// =====================================================================
+
+async function grammarQuizStart(req, res) {
+    try {
+        purgeExpired(quizSessions);
+
+        const body = req.body || {};
+        const grammarIds = Array.isArray(body.grammarIds)
+            ? body.grammarIds.map(Number).filter(Number.isFinite)
+            : [];
+        const hsk = normalizeHsk(body.hsk);
+        const limit = Math.min(Math.max(parseInt(body.limit, 10) || 10, 1), 30);
+
+        if (!grammarIds.length && hsk === null) {
+            return res.status(400).json({
+                success: false,
+                message: 'Chọn ít nhất một ngữ pháp hoặc một cấp HSK.',
+            });
+        }
+
+        const rows = await grammarQuizModel.getQuestions({ grammarIds, hskLevel: hsk, limit });
+        if (!rows.length) {
+            return res.status(404).json({
+                success: false,
+                message: 'Chưa có câu hỏi cho lựa chọn này.',
+            });
+        }
+
+        const token = genSessionToken();
+        quizSessions.set(token, {
+            userId: req.user.userId,
+            questions: rows.map(r => ({
+                id: r.id,
+                correctAnswer: r.correct_answer,
+                grammarId: r.grammar_pattern_id,
+                explanation: r.explanation || '',
+                points: r.points || 1,
+            })),
+            answers: {},
+            finished: false,
+            expiresAt: Date.now() + SESSION_TTL_MS,
+        });
+
+        // Client-safe payload: NO correct_answer / explanation.
+        const questions = rows.map(r => ({
+            id: r.id,
+            grammarPatternId: r.grammar_pattern_id,
+            grammarPoint: r.grammar_point,
+            hskLevel: r.hsk_level,
+            questionType: r.question_type,
+            questionText: r.question_text,
+            options: r.options,
+        }));
+
+        return res.json({ success: true, data: { token, questions } });
+    } catch (err) {
+        console.error('grammarQuizStart error:', err);
+        return res.status(500).json({ success: false, message: 'Lỗi tạo phiên trắc nghiệm.' });
+    }
+}
+
+async function grammarQuizAnswer(req, res) {
+    try {
+        const { token, questionId, choice } = req.body || {};
+        if (!token || questionId === undefined || choice === undefined) {
+            return res.status(400).json({ success: false, message: 'Thiếu token/questionId/choice.' });
+        }
+
+        const session = quizSessions.get(token);
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Phiên đã hết hạn. Bắt đầu lại.' });
+        }
+        if (session.userId !== req.user.userId) {
+            return res.status(403).json({ success: false, message: 'Không khớp người chơi.' });
+        }
+        if (session.expiresAt < Date.now()) {
+            quizSessions.delete(token);
+            return res.status(410).json({ success: false, message: 'Phiên đã hết hạn.' });
+        }
+
+        const qid = Number.parseInt(questionId, 10);
+        const question = session.questions.find(q => q.id === qid);
+        if (!question) {
+            return res.status(400).json({ success: false, message: 'Câu hỏi không thuộc phiên này.' });
+        }
+
+        const correct = String(choice) === String(question.correctAnswer);
+        session.answers[qid] = { correct, grammarId: question.grammarId };
+
+        return res.json({
+            success: true,
+            data: { correct, correctAnswer: question.correctAnswer, explanation: question.explanation },
+        });
+    } catch (err) {
+        console.error('grammarQuizAnswer error:', err);
+        return res.status(500).json({ success: false, message: 'Lỗi chấm câu trả lời.' });
+    }
+}
+
+async function grammarQuizFinish(req, res) {
+    try {
+        const { token } = req.body || {};
+        if (!token) {
+            return res.status(400).json({ success: false, message: 'Thiếu token.' });
+        }
+
+        const session = quizSessions.get(token);
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Phiên đã hết hạn.' });
+        }
+        if (session.userId !== req.user.userId) {
+            return res.status(403).json({ success: false, message: 'Không khớp người chơi.' });
+        }
+        if (session.finished) {
+            return res.status(410).json({ success: false, message: 'Phiên đã được tính rồi.' });
+        }
+        session.finished = true;
+
+        const total = session.questions.length;
+        const answered = Object.keys(session.answers).length;
+        let correct = 0;
+        const statsByGrammar = {};
+        for (const ans of Object.values(session.answers)) {
+            if (ans.correct) correct += 1;
+            const g = statsByGrammar[ans.grammarId] || { seen: 0, correct: 0, wrong: 0 };
+            g.seen += 1;
+            if (ans.correct) g.correct += 1; else g.wrong += 1;
+            statsByGrammar[ans.grammarId] = g;
+        }
+        const score = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+        let xpEarned = 0;
+        try {
+            await grammarQuizModel.upsertProgress(req.user.userId, statsByGrammar);
+            await streakService.updateStreak(req.user.userId);
+            xpEarned = await xpService.awardXp(req.user.userId, 'practice_grammar_quiz', {
+                score,
+                refType: 'grammar_quiz',
+            });
+        } catch (xpErr) {
+            console.error('grammarQuizFinish progress/xp error:', xpErr.message);
+        }
+
+        quizSessions.delete(token);
+        return res.json({ success: true, data: { total, answered, correct, score, xpEarned } });
+    } catch (err) {
+        console.error('grammarQuizFinish error:', err);
+        return res.status(500).json({ success: false, message: 'Lỗi hoàn tất phiên.' });
+    }
+}
+
 module.exports = {
     getPracticeText,
     getMatchPairs,
@@ -592,4 +751,7 @@ module.exports = {
     translatePrompt,
     translateGrade,
     writeComplete,
+    grammarQuizStart,
+    grammarQuizAnswer,
+    grammarQuizFinish,
 };

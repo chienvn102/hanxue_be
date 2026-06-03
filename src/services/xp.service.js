@@ -9,6 +9,7 @@ const XP_RULES = {
     hsk_exam_perfect: 100,
     practice_match_pair: 5,
     practice_translate: { high: 10, mid: 5, low: 1 },
+    practice_grammar_quiz: { high: 10, mid: 5, low: 1 },
     ai_chat: 2,
     streak_day_3: 10,
     streak_day_7: 25,
@@ -31,6 +32,13 @@ function calculateAmount(action, params = {}) {
         if (score >= 80) return XP_RULES.practice_translate.high;
         if (score >= 50) return XP_RULES.practice_translate.mid;
         return XP_RULES.practice_translate.low;
+    }
+
+    if (action === 'practice_grammar_quiz') {
+        const score = Number(params.score || 0);
+        if (score >= 80) return XP_RULES.practice_grammar_quiz.high;
+        if (score >= 50) return XP_RULES.practice_grammar_quiz.mid;
+        return XP_RULES.practice_grammar_quiz.low;
     }
 
     return XP_RULES[action] || 0;

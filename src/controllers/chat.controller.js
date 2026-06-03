@@ -6,16 +6,14 @@
  */
 
 const crypto = require('crypto');
-const geminiService = require('../services/gemini.service');
+const groq = require('../services/groq');
 const ChatModel = require('../models/chat.model');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
 const aiSafety = require('../services/aiSafety.service');
-const aiTools = require('../services/aiTools.service');
 const { logAiAudit } = require('../middleware/aiAudit.middleware');
 const UserModel = require('../models/user.model');
 const ProgressModel = require('../models/progress.model');
-const promptCache = require('../services/promptCache.service');
 
 /** Generate short request ID for log correlation */
 function genRequestId() {
@@ -24,15 +22,21 @@ function genRequestId() {
 
 // System prompts
 const SYSTEM_PROMPT_CHAT = (level) =>
-    `Bạn là gia sư tiếng Trung thân thiện tên 小明 (Xiǎo Míng).
-Nhiệm vụ: giải thích kiến thức tiếng Trung cho người học Việt Nam.
-Trình độ người học: HSK ${level}.
-Quy tắc:
-- Luôn hiển thị: Hán tự + Pinyin + nghĩa tiếng Việt
-- Giải thích ngắn gọn, dễ hiểu
-- Thêm ví dụ câu khi cần
-- Chỉ dùng từ vựng HSK ${level} trở xuống
-- Trả lời bằng tiếng Việt, giữ tiếng Trung khi cần thiết`;
+    `Bạn là gia sư tiếng Trung tên 小明 (Xiǎo Míng), giọng thân thiện gần gũi như bạn cùng học.
+Trình độ học viên: HSK ${level}.
+
+CÁCH NÓI CHUYỆN (RẤT QUAN TRỌNG — đây là một cuộc nhắn tin liên tục):
+- Đọc kỹ lịch sử chat trước khi trả lời. KHÔNG lặp lại kiến thức đã nói ở lượt trước.
+- TUYỆT ĐỐI KHÔNG mở đầu bằng "Chào bạn, 小明 đây", "Chào bạn!", "Rất vui được giúp bạn"… trừ khi đây thực sự là lượt đầu (lịch sử rỗng).
+- TUYỆT ĐỐI KHÔNG kết bằng câu mời chào sáo rỗng kiểu "cứ hỏi 小明 nha", "có gì hỏi mình nhé", "chúc bạn học vui". Trả lời xong là dừng.
+- Trả lời thẳng vào câu hỏi, gọn, tự nhiên như đang chat. Câu hỏi tiếp nối ý trước thì bám sát ngữ cảnh đó.
+- Khi học viên hỏi tiếp ("còn ví dụ khác không", "thế còn X"), trả lời ngắn — chỉ phần được hỏi.
+
+NỘI DUNG:
+- Khi giới thiệu từ/cấu trúc: Hán tự + Pinyin + nghĩa tiếng Việt + 1–2 ví dụ ngắn (chữ Hán + pinyin + dịch).
+- Giải thích ngắn gọn, ưu tiên ví dụ. Chỉ đào sâu khi học viên hỏi tiếp.
+- Dùng từ vựng quanh HSK ${level}. Trả lời bằng tiếng Việt, giữ Hán tự + pinyin khi cần.
+- Khi học viên hỏi tính năng app, chỉ dùng đúng tên ở phần "Các tính năng trong app" bên dưới.`;
 
 const SYSTEM_PROMPT_CONVERSATION = (level) =>
     `Bạn là người bản ngữ tiếng Trung tên 小红 (Xiǎo Hóng), đang trò chuyện realtime với học viên.
@@ -130,7 +134,7 @@ function buildDynamicContext(learningProfile, mistakes, weakVocab) {
     return parts.join('\n\n');
 }
 
-// Max history entries to send to Gemini
+// Max history entries to send to Groq
 const MAX_HISTORY_LENGTH = 20;
 // Max chars per history message content
 const MAX_CONTENT_LENGTH = 5000;
@@ -212,60 +216,38 @@ async function sendMessage(req, res) {
         ]);
         const hskLevel = userInfo.targetHsk;
 
-        // Call Gemini API
+        // Call Groq API (LPU — nhanh hơn Gemini cho output ngắn/chat).
+        // Bỏ tool-calling vòng-lặp: pre-fetch user context và inline thẳng vào
+        // system prompt → 1 round-trip duy nhất, không có cache cold-start.
         const startMs = Date.now();
-        let rawReply;
-        let toolCalls = [];
+        const toolCalls = [];
 
+        let systemPrompt;
         if (isChat) {
-            // STATIC (cache duoc): persona + rules + app catalog + security.
             const staticPrompt = `${SYSTEM_PROMPT_CHAT(hskLevel)}\n${APP_CONTEXT}\n\n${SECURITY_NOTE}`;
-            // DYNAMIC (rieng tung user): stats + ho so hoc tap gan day.
             const dynamicPrompt = buildDynamicContext(learningProfile, recentMistakes, weakVocab);
-
-            // Thu dung explicit context cache cho STATIC; null → fallback inline.
-            const cacheName = await promptCache.getOrCreateStaticCache('chat', hskLevel, staticPrompt);
-
-            let geminiMessages;
-            const toolOptions = { userId, requestId };
-            if (cacheName) {
-                // STATIC nam trong cache → chi gui DYNAMIC (user-led) + history + message.
-                geminiMessages = [
-                    ...(dynamicPrompt ? [{ role: 'user', content: dynamicPrompt }] : []),
-                    ...cleanHistory,
-                    { role: 'user', content: sanitizedMessage.text },
-                ];
-                toolOptions.cachedContent = cacheName;
-            } else {
-                // Khong cache → gop STATIC + DYNAMIC vao system message nhu cu.
-                const inlineSystem = dynamicPrompt
-                    ? `${staticPrompt}\n\n${dynamicPrompt}`
-                    : staticPrompt;
-                geminiMessages = [
-                    { role: 'system', content: inlineSystem },
-                    ...cleanHistory,
-                    { role: 'user', content: sanitizedMessage.text },
-                ];
-            }
-
-            const toolResult = await aiTools.runWithTools(geminiMessages, toolOptions);
-            rawReply = toolResult.text;
-            toolCalls = toolResult.toolCalls;
+            systemPrompt = dynamicPrompt ? `${staticPrompt}\n\n${dynamicPrompt}` : staticPrompt;
         } else {
-            // Conversation (小红) — gon nhe, khong tiem ho so/app catalog, khong cache.
-            const convSystem = `${SYSTEM_PROMPT_CONVERSATION(hskLevel)}\n\n${SECURITY_NOTE}`;
-            const geminiMessages = [
-                { role: 'system', content: convSystem },
-                ...cleanHistory,
-                { role: 'user', content: sanitizedMessage.text },
-            ];
-            const result = await geminiService.sendMessage(geminiMessages, requestId);
-            rawReply = result.text;
+            // Conversation (小红) — gọn, không tiêm hồ sơ/app catalog.
+            systemPrompt = `${SYSTEM_PROMPT_CONVERSATION(hskLevel)}\n\n${SECURITY_NOTE}`;
         }
+
+        const groqMessages = [
+            { role: 'system', content: systemPrompt },
+            ...cleanHistory,
+            { role: 'user', content: sanitizedMessage.text },
+        ];
+
+        const groqResult = await groq.sendMessage(groqMessages, requestId, {
+            temperature: isChat ? 0.6 : 0.7,
+            maxTokens: isChat ? 1200 : 400,
+        });
+        const rawReply = groqResult.text;
+
         const safeReply = aiSafety.redactSensitiveOutput(rawReply);
         const reply = safeReply.text;
         const flagReasons = [...new Set([...sanitizedMessage.flagReasons, ...safeReply.flagReasons])];
-        console.log(`[${requestId}] Gemini responded in ${Date.now() - startMs}ms, replyLen=${reply.length}`);
+        console.log(`[${requestId}] Groq responded in ${Date.now() - startMs}ms, replyLen=${reply.length}, tokensUsed=${groqResult.tokensUsed}`);
 
         // Increment daily chat count (returns actual post-increment count)
         const newChatCount = await ChatModel.incrementDailyAiChat(userId);

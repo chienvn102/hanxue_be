@@ -29,4 +29,9 @@ router.post('/translate-prompt', aiRateLimit, practiceController.translatePrompt
 router.post('/translate-grade',  aiRateLimit, practiceController.translateGrade);
 router.post('/write-complete', practiceController.writeComplete);
 
+// Grammar quiz (seeded MCQ, server-side session token, anti-cheat)
+router.post('/grammar-quiz/start', practiceController.grammarQuizStart);
+router.post('/grammar-quiz/answer', practiceController.grammarQuizAnswer);
+router.post('/grammar-quiz/finish', practiceController.grammarQuizFinish);
+
 module.exports = router;

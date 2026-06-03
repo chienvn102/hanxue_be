@@ -10,6 +10,11 @@ router.use(authMiddleware);
 // MUST be before /:id routes to avoid matching 'saved-ids' as an id
 router.get('/saved-ids', notebookController.getSavedVocabIds);
 
+// Saved grammar points ("Ngữ pháp" tab) — MUST be before /:id routes
+router.get('/grammar', notebookController.getSavedGrammar);
+router.get('/grammar/ids', notebookController.getSavedGrammarIds);
+router.post('/grammar/toggle', notebookController.toggleSaveGrammar);
+
 // Notebook CRUD
 router.get('/', notebookController.getNotebooks);
 router.post('/', notebookController.createNotebook);
