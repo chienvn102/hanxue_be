@@ -17,6 +17,9 @@ router.get('/users/stats', adminMiddleware, adminUserController.getUserStats);
 router.get('/jobs/:jobId', adminMiddleware, audioGenController.getJob);
 router.post('/vocab/:id/gen-audio', adminMiddleware, audioGenController.genVocabAudio);
 router.post('/gen-audio-text', adminMiddleware, audioGenController.genTextAudio);
+// Edge TTS (free, local, Python edge_tts subprocess)
+router.post('/vocab/:id/gen-audio-edge', adminMiddleware, audioGenController.genVocabAudioEdge);
+router.post('/gen-audio-text-edge', adminMiddleware, audioGenController.genTextAudioEdge);
 router.post('/hsk-questions/:id/gen-audio', adminMiddleware, audioGenController.genHskQuestionAudio);
 router.post('/lessons/:id/gen-audio', adminMiddleware, audioGenController.genLessonAudio);
 router.post('/examples/:id/gen-audio', adminMiddleware, audioGenController.genExampleAudio);

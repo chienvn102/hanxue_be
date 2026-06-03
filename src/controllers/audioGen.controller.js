@@ -90,3 +90,18 @@ exports.genTextAudio = async (req, res) => {
     }
     enqueue(res, () => audioGen.genTextAudio(text, { voice, speed }));
 };
+
+// ----- Edge TTS variants (Python edge_tts subprocess) -----
+
+exports.genVocabAudioEdge = async (req, res) => {
+    const { voice } = req.body || {};
+    enqueue(res, () => audioGen.genVocabAudioEdge(req.params.id, { voice }));
+};
+
+exports.genTextAudioEdge = async (req, res) => {
+    const { text, voice } = req.body || {};
+    if (!text || typeof text !== 'string' || !text.trim()) {
+        return res.status(400).json({ success: false, message: 'Thiếu text.' });
+    }
+    enqueue(res, () => audioGen.genTextAudioEdge(text, { voice }));
+};
