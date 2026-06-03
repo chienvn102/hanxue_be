@@ -11,11 +11,12 @@ const FlashcardModel = require('../models/flashcard.model');
  */
 async function getSession(req, res) {
     try {
-        const { hsk, limit = 20 } = req.query;
+        const { hsk, limit = 20, lesson } = req.query;
 
         const rows = await FlashcardModel.getRandomFlashcards({
             hsk,
-            limit: parseInt(limit)
+            limit: parseInt(limit),
+            lessonId: lesson,
         });
 
         const flashcards = rows.map(row => ({

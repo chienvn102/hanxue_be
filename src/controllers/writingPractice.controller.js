@@ -19,6 +19,8 @@ const writingProgress = require('../models/writingProgress.model');
 const xpService = require('../services/xp.service');
 const streakService = require('../services/streak.service');
 const activityLog = require('../services/activityLog.service');
+const progressTracker = require('../services/progressTracker.service');
+const db = require('../config/database');
 
 function parseStrokeOrder(raw) {
     if (!raw) return [];
@@ -185,6 +187,27 @@ exports.submit = async (req, res) => {
             icon: 'edit',
             payload: { character, stage: stageInt, mistakes: mistakesInt, score: scoreLabel },
         }).catch(() => {});
+
+        // Cross-track vocab progress: when the practiced character corresponds
+        // to a vocab entry (single-char vocab) the writing attempt should
+        // advance vocab mastery + SRS the same way flashcard/match do.
+        // Best-effort: silently skip when character isn't in vocabulary.
+        try {
+            const quality = scoreLabel === 'perfect' ? 5
+                : scoreLabel === 'pass' ? 3
+                : 1;
+            const [vocabRows] = await db.execute(
+                'SELECT id FROM vocabulary WHERE simplified = ? LIMIT 1',
+                [character]
+            );
+            if (vocabRows[0]) {
+                await progressTracker.recordVocabAttempt(userId, vocabRows[0].id, quality, {
+                    source: 'writing',
+                });
+            }
+        } catch (trackerErr) {
+            console.error('writing tracker error:', trackerErr.message);
+        }
 
         return res.json({
             success: true,

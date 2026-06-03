@@ -25,6 +25,19 @@ exports.getLessonsByCourse = async (req, res) => {
 };
 
 // Get single lesson details with contents and questions
+// Lightweight meta for FE practice headers — no contents/questions.
+// GET /api/lessons/:id/meta → { id, title, hsk_level, course_id, course_title }
+exports.getLessonMeta = async (req, res) => {
+    try {
+        const meta = await Lesson.getMeta(req.params.id);
+        if (!meta) return res.status(404).json({ success: false, message: 'Lesson not found' });
+        res.json({ success: true, data: meta });
+    } catch (error) {
+        console.error('Error fetching lesson meta:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
 exports.getLessonDetails = async (req, res) => {
     try {
         const lessonId = req.params.id;

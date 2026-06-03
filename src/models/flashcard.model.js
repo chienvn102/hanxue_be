@@ -17,22 +17,34 @@ function normalizeHsk(hsk) {
 }
 
 /**
- * Get random flashcards for study session
+ * Get random flashcards for study session.
+ * @param {{hsk?:number|string, limit?:number, lessonId?:number|string}} opts
+ *   - lessonId: if set, restrict pool to vocab attached to that lesson
+ *     (INNER JOIN lesson_vocabulary). Combinable with hsk filter.
  */
-async function getRandomFlashcards({ hsk, limit = 20 }) {
+async function getRandomFlashcards({ hsk, limit = 20, lessonId } = {}) {
     const wordLimit = Math.min(parseInt(limit) || 20, 100);
     const hskInt = normalizeHsk(hsk);
+    const lessonInt = Number.parseInt(lessonId, 10);
+    const hasLesson = Number.isFinite(lessonInt) && lessonInt > 0;
 
     let sql = `
-        SELECT id, simplified, traditional, pinyin, han_viet,
-               meaning_vi, meaning_en, hsk_level
-        FROM vocabulary
-        WHERE meaning_vi IS NOT NULL AND meaning_vi != ''
+        SELECT v.id, v.simplified, v.traditional, v.pinyin, v.han_viet,
+               v.meaning_vi, v.meaning_en, v.hsk_level
+        FROM vocabulary v
     `;
     const params = [];
 
+    if (hasLesson) {
+        sql += ` INNER JOIN lesson_vocabulary lv
+                    ON lv.vocabulary_id = v.id AND lv.lesson_id = ?`;
+        params.push(lessonInt);
+    }
+
+    sql += ` WHERE v.meaning_vi IS NOT NULL AND v.meaning_vi != ''`;
+
     if (hskInt !== null) {
-        sql += ' AND hsk_level = ?';
+        sql += ' AND v.hsk_level = ?';
         params.push(hskInt);
     }
 

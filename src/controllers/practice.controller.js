@@ -23,6 +23,7 @@ const gemini = require('../services/gemini.service');
 const groq = require('../services/groq');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
+const progressTracker = require('../services/progressTracker.service');
 const ChatModel = require('../models/chat.model');
 const grammarQuizModel = require('../models/grammarQuiz.model');
 
@@ -194,18 +195,24 @@ async function getMatchPairs(req, res) {
 
         const hskInt = normalizeHsk(req.query.hsk);
         const limit = Math.min(parseInt(req.query.limit, 10) || 8, 16);
+        const lessonInt = Number.parseInt(req.query.lesson, 10);
+        const hasLesson = Number.isFinite(lessonInt) && lessonInt > 0;
 
         // Pull 4x oversample rồi dedup theo meaning_vi VÀ simplified để tránh
         // ambiguous matches (vd nhiều vocab có cùng nghĩa "to/lớn" sẽ rối UI).
-        let sql = `
-            SELECT id, simplified, pinyin, meaning_vi
-            FROM vocabulary
-            WHERE meaning_vi IS NOT NULL AND meaning_vi != ''
-              AND simplified IS NOT NULL AND simplified != ''
-        `;
+        // Nếu ?lesson=<id> → INNER JOIN lesson_vocabulary giới hạn pool trong bài.
+        let sql = `SELECT v.id, v.simplified, v.pinyin, v.meaning_vi
+                     FROM vocabulary v`;
         const params = [];
+        if (hasLesson) {
+            sql += ` INNER JOIN lesson_vocabulary lv
+                        ON lv.vocabulary_id = v.id AND lv.lesson_id = ?`;
+            params.push(lessonInt);
+        }
+        sql += ` WHERE v.meaning_vi IS NOT NULL AND v.meaning_vi != ''
+                   AND v.simplified IS NOT NULL AND v.simplified != ''`;
         if (hskInt !== null) {
-            sql += ' AND hsk_level = ?';
+            sql += ' AND v.hsk_level = ?';
             params.push(hskInt);
         }
         sql += ' ORDER BY RAND() LIMIT ?';
@@ -315,6 +322,14 @@ async function clearMatchPair(req, res) {
             });
         } catch (xpErr) {
             console.error('clearMatchPair streak/xp error:', xpErr.message);
+        }
+
+        // Sync vocab progress so match plays count toward mastery + SRS.
+        // Pair cleared = the learner correctly recognized it → quality 5.
+        try {
+            await progressTracker.recordVocabAttempt(req.user.userId, vid, 5, { source: 'match' });
+        } catch (trackerErr) {
+            console.error('clearMatchPair tracker error:', trackerErr.message);
         }
 
         // Cleanup nếu user đã clear hết
@@ -542,6 +557,40 @@ async function translateGrade(req, res) {
             }
         } catch (xpErr) {
             console.error(`[${requestId}] streak/xp update failed:`, xpErr.message);
+        }
+
+        // Best-effort vocab progress sync: translate is sentence-level so there
+        // is no canonical vocab_id. Tokenize correct_zh into 2-char and 1-char
+        // windows, match against vocabulary.simplified, and record each match.
+        // Comment: this is approximate — overlapping bigrams can match the same
+        // span twice, but that's bounded by the 30-row LIMIT and acceptable.
+        try {
+            const hanziOnly = (correctZh || '').replace(/[^一-鿿]/g, '');
+            if (hanziOnly) {
+                const tokens = new Set();
+                for (let i = 0; i < hanziOnly.length; i++) {
+                    if (i + 1 < hanziOnly.length) tokens.add(hanziOnly.slice(i, i + 2));
+                    tokens.add(hanziOnly[i]);
+                }
+                const tokenList = [...tokens].slice(0, 80);
+                if (tokenList.length) {
+                    const placeholders = tokenList.map(() => '?').join(',');
+                    const [matches] = await db.execute(
+                        `SELECT id FROM vocabulary WHERE simplified IN (${placeholders}) LIMIT 30`,
+                        tokenList
+                    );
+                    if (matches.length) {
+                        const q = progressTracker.qualityFromScore(score);
+                        await progressTracker.recordVocabAttemptsBatch(
+                            req.user.userId,
+                            matches.map(m => ({ vocabId: m.id, quality: q })),
+                            { source: 'translate' }
+                        );
+                    }
+                }
+            }
+        } catch (trackerErr) {
+            console.error(`[${requestId}] translate tracker error:`, trackerErr.message);
         }
 
         return res.json({

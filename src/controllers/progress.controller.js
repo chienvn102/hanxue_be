@@ -9,7 +9,7 @@
 const ProgressModel = require('../models/progress.model');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
-const { nextSrs } = require('../services/srs.service');
+const progressTracker = require('../services/progressTracker.service');
 
 /**
  * Compute mastery_level (0–5) từ accuracy + total reviews. Đơn giản hoá thay
@@ -115,35 +115,11 @@ async function submitReview(req, res) {
         }
 
         const isCorrect = quality >= 3;
-        const current = await ProgressModel.getProgress(userId, vocabId);
-        const srs = nextSrs({
-            ease_factor: current?.ease_factor,
-            interval_days: current?.interval_days,
-            repetitions: current?.repetitions,
-        }, quality);
-
-        if (!current) {
-            const mastery = deriveMastery(1, isCorrect ? 1 : 0);
-            await ProgressModel.createProgress(userId, vocabId, {
-                masteryLevel: mastery,
-                isCorrect,
-                responseMs: responseMs || null,
-                srs,
-            });
-        } else {
-            const newSeen = (current.times_seen || 0) + 1;
-            const newCorrect = (current.times_correct || 0) + (isCorrect ? 1 : 0);
-            const newAvgMs = responseMs && current.avg_response_ms
-                ? Math.round((current.avg_response_ms + responseMs) / 2)
-                : (responseMs || current.avg_response_ms);
-
-            await ProgressModel.updateProgress(userId, vocabId, {
-                masteryLevel: deriveMastery(newSeen, newCorrect),
-                isCorrect,
-                avgResponseMs: newAvgMs,
-                srs,
-            });
-        }
+        // Single sink — same UPSERT + SRS path that match/writing/translate use.
+        await progressTracker.recordVocabAttempt(userId, vocabId, quality, {
+            source: 'flashcard',
+            responseMs: responseMs || null,
+        });
 
         // Streak + XP (best-effort). Trả về xpEarned để FE không phải tự
         // tính lại (tránh drift giữa display và BE — bug HF4 review #2).

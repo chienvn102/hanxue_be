@@ -38,6 +38,21 @@ const Lesson = {
         return rows[0];
     },
 
+    /**
+     * Lightweight metadata for FE practice headers ("Từ vựng bài <title> · HSK <n>").
+     * Joins the course title so the FE can render a single breadcrumb.
+     */
+    getMeta: async (id) => {
+        const [rows] = await db.execute(
+            `SELECT l.id, l.title, l.hsk_level, l.course_id, c.title AS course_title
+               FROM lessons l
+          LEFT JOIN courses c ON c.id = l.course_id
+              WHERE l.id = ? AND l.is_active = TRUE`,
+            [id]
+        );
+        return rows[0] || null;
+    },
+
     create: async (data) => {
         // After migration 004, lessons no longer carry youtube_id/duration; the
         // textbook fields are populated via TextbookLesson.createTextbook().

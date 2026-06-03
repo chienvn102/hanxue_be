@@ -60,12 +60,17 @@ async function synthesizeToFile(text, outputFile, { voice = 'female', rate } = {
     return new Promise((resolve, reject) => {
         execFile(PYTHON_BIN, args, { timeout: TIMEOUT_MS }, async (err, _stdout, stderr) => {
             if (err) {
-                // killed === true means timeout; otherwise spawn/exec failure.
-                const msg = err.code === 'ENOENT'
-                    ? `python3 khong tim thay tren server (PYTHON_BIN=${PYTHON_BIN}). Cai dat python3 + edge-tts.`
-                    : err.killed
-                        ? 'Edge TTS qua thoi gian, vui long thu lai.'
-                        : (String(stderr || err.message).slice(0, 200) || 'Edge TTS that bai.');
+                const stderrText = String(stderr || '');
+                let msg;
+                if (err.code === 'ENOENT') {
+                    msg = `Khong tim thay python (PYTHON_BIN=${PYTHON_BIN}). Cai venv: python3 -m venv .venv && .venv/bin/pip install edge-tts, roi set PYTHON_BIN.`;
+                } else if (err.killed) {
+                    msg = 'Edge TTS qua thoi gian, vui long thu lai.';
+                } else if (/No module named ['"]?edge_tts['"]?/i.test(stderrText)) {
+                    msg = `edge-tts chua duoc cai cho ${PYTHON_BIN}. Chay: ${PYTHON_BIN} -m pip install edge-tts (hoac dung venv).`;
+                } else {
+                    msg = stderrText.slice(0, 200) || err.message || 'Edge TTS that bai.';
+                }
                 const e = new Error(`edge-tts failed: ${msg}`);
                 e.publicMessage = msg;
                 e.status = err.code === 'ENOENT' ? 500 : 502;

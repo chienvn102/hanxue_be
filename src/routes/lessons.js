@@ -10,6 +10,11 @@ const roleMiddleware = require('../middleware/role.middleware');
 
 // Public/User routes (optionalAuth allows viewing without login)
 router.get('/course/:courseId', optionalAuth, checkCourseUnlocked, lessonController.getLessonsByCourse);
+// /meta is the lightweight title+hsk header used by /flashcard/session,
+// /practice/* pages to render "Từ vựng bài <title> · HSK <n>". MUST be before
+// the bare /:id route to avoid matching 'meta' as id, and skips the
+// course-unlock guard since the payload is non-sensitive metadata only.
+router.get('/:id/meta', optionalAuth, lessonController.getLessonMeta);
 router.get('/:id', optionalAuth, checkLessonCourseUnlocked, lessonController.getLessonDetails);
 
 // Textbook lesson — full payload + per-section progress
