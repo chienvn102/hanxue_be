@@ -76,6 +76,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/activity', require('./routes/activity'));
 app.use('/api/achievements', require('./routes/achievements'));
 app.use('/api/realtime', require('./routes/realtime'));
+app.use('/api/pronunciation', require('./routes/pronunciation'));
 app.use('/api/writing', require('./routes/writingPractice'));
 app.use('/api', require('./routes/lessonFeedback'));
 
