@@ -22,6 +22,35 @@ const edgeTts = require('./edgeTts.service');
 const CACHE_DIR = path.join(__dirname, '../../public/audio/syllables');
 const PUBLIC_BASE = '/audio/syllables';
 
+// Hard cap on concurrent Edge TTS subprocesses. Each spawned python process
+// uses ~30-50MB RAM; on a 1GB droplet spawning ~20 in parallel can OOM-kill
+// MariaDB. 2 is a safe ceiling that still serves user-triggered playback
+// reasonably (worst case: queue waits ~1-2s per syllable).
+const MAX_CONCURRENT_TTS = parseInt(process.env.SYLLABLE_TTS_MAX_CONCURRENT || '2', 10);
+let ttsInFlight = 0;
+const ttsWaiters = [];
+
+function acquireTtsSlot() {
+    if (ttsInFlight < MAX_CONCURRENT_TTS) {
+        ttsInFlight++;
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => ttsWaiters.push(resolve));
+}
+
+function releaseTtsSlot() {
+    if (ttsWaiters.length > 0) {
+        const next = ttsWaiters.shift();
+        next();    // slot count stays the same — handed off
+    } else {
+        ttsInFlight = Math.max(0, ttsInFlight - 1);
+    }
+}
+
+// Dedupe concurrent requests for the same syllable so two simultaneous calls
+// don't spawn two python subprocesses for the same file.
+const inflightBySyllable = new Map();
+
 // Map pinyin base (no tone) → Vietnamese hint character to feed TTS. The TTS
 // prompt is just the syllable spoken; tone is encoded as the tone digit which
 // edge-tts cannot understand directly, so we synthesise the pinyin with tone
@@ -151,9 +180,23 @@ function httpGetBuffer(url, timeoutMs) {
 }
 
 /**
+ * Cache-only lookup: returns `{audio_url, provider:'cache'}` if the file is
+ * already on disk, otherwise `null`. NEVER spawns Edge TTS or hits Forvo, so
+ * it's safe to call in bulk from list endpoints.
+ */
+async function getSyllableAudioIfCached(syllableWithTone) {
+    const key = String(syllableWithTone || '').trim().toLowerCase();
+    if (!/^[a-zü]+[1-5]$/.test(key)) return null;
+    if (await existsOnDisk(key)) {
+        return { audio_url: publicUrl(key), provider: 'cache' };
+    }
+    return null;
+}
+
+/**
  * Get a playable URL for `<syllable+tone>` (e.g. "ma3", "shi4", "wo5").
- * Returns `{audio_url, provider}` where audio_url is a path relative to the BE
- * origin (FE prefixes with NEXT_PUBLIC_API_URL).
+ * Spawns Edge TTS subprocess on cache miss — protected by a concurrency cap
+ * and per-syllable dedupe to keep RAM bounded on small VMs.
  */
 async function getSyllableAudio(syllableWithTone) {
     const key = String(syllableWithTone || '').trim().toLowerCase();
@@ -167,37 +210,55 @@ async function getSyllableAudio(syllableWithTone) {
 
     await ensureCacheDir();
 
-    // 1) disk cache
+    // 1) disk cache (always check first — no subprocess needed)
     if (await existsOnDisk(key)) {
         return { audio_url: publicUrl(key), provider: 'cache' };
     }
 
-    const marked = applyToneMark(key);
-
-    // 2) Forvo (optional)
-    const forvoBuf = await tryForvo(marked);
-    if (forvoBuf) {
-        try {
-            await fs.writeFile(diskPath(key), forvoBuf);
-            return { audio_url: publicUrl(key), provider: 'forvo' };
-        } catch (e) {
-            console.warn('[syllableAudio] Forvo write failed:', e.message);
-        }
+    // Dedupe: if another request for the same syllable is in flight, await it.
+    if (inflightBySyllable.has(key)) {
+        return inflightBySyllable.get(key);
     }
 
-    // 3) Edge TTS fallback (free)
+    const promise = (async () => {
+        const marked = applyToneMark(key);
+
+        // 2) Forvo (optional, network only — no subprocess)
+        const forvoBuf = await tryForvo(marked);
+        if (forvoBuf) {
+            try {
+                await fs.writeFile(diskPath(key), forvoBuf);
+                return { audio_url: publicUrl(key), provider: 'forvo' };
+            } catch (e) {
+                console.warn('[syllableAudio] Forvo write failed:', e.message);
+            }
+        }
+
+        // 3) Edge TTS fallback — gated by concurrency limiter to protect RAM
+        await acquireTtsSlot();
+        try {
+            await edgeTts.synthesizeToFile(marked, diskPath(key), { voice: 'female' });
+            return { audio_url: publicUrl(key), provider: 'edge_tts' };
+        } catch (e) {
+            const err = new Error(`Cannot synthesise syllable "${key}": ${e.message}`);
+            err.publicMessage = e.publicMessage || 'Không tạo được audio cho âm tiết này.';
+            err.status = e.status || 502;
+            throw err;
+        } finally {
+            releaseTtsSlot();
+        }
+    })();
+
+    inflightBySyllable.set(key, promise);
     try {
-        await edgeTts.synthesizeToFile(marked, diskPath(key), { voice: 'female' });
-        return { audio_url: publicUrl(key), provider: 'edge_tts' };
-    } catch (e) {
-        const err = new Error(`Cannot synthesise syllable "${key}": ${e.message}`);
-        err.publicMessage = e.publicMessage || 'Không tạo được audio cho âm tiết này.';
-        err.status = e.status || 502;
-        throw err;
+        return await promise;
+    } finally {
+        inflightBySyllable.delete(key);
     }
 }
 
 module.exports = {
     getSyllableAudio,
+    getSyllableAudioIfCached,
     applyToneMark,
 };

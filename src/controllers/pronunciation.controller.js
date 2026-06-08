@@ -55,34 +55,30 @@ async function getAudio(req, res) {
 }
 
 // GET /minimal-pairs?level=N&limit=M
+// IMPORTANT: this endpoint MUST NOT spawn Edge TTS — a single call would
+// otherwise queue 60+ python subprocesses (30 pairs × 2 syllables) and
+// exhaust RAM on a small VM. Audio fields are populated from disk cache
+// only; if missing, FE lazy-fetches via /audio?syllable=... when needed.
 async function listMinimalPairs(req, res) {
     try {
         const level = req.query.level;
         const limit = req.query.limit;
         const pairs = await pronunciation.getMinimalPairs({ level, limit });
 
-        // Lazy-warm audio for each side (won't block — first call from FE will
-        // resolve to disk if already cached). Skip if pair has audio_a/audio_b
-        // already set in DB.
         const warmed = await Promise.all(pairs.map(async (p) => {
-            const audioA = p.audio_a || await safeAudio(p.syllable_a);
-            const audioB = p.audio_b || await safeAudio(p.syllable_b);
-            return { ...p, audio_a: audioA, audio_b: audioB };
+            const cachedA = await syllableAudio.getSyllableAudioIfCached(p.syllable_a);
+            const cachedB = await syllableAudio.getSyllableAudioIfCached(p.syllable_b);
+            return {
+                ...p,
+                audio_a: p.audio_a || cachedA?.audio_url || null,
+                audio_b: p.audio_b || cachedB?.audio_url || null,
+            };
         }));
 
         return ok(res, warmed);
     } catch (e) {
         console.error('[pronunciation] listMinimalPairs:', e);
         return err(res, 500, 'Không tải được cặp từ.');
-    }
-}
-
-async function safeAudio(syllable) {
-    try {
-        const { audio_url } = await syllableAudio.getSyllableAudio(syllable);
-        return audio_url;
-    } catch {
-        return null;
     }
 }
 
