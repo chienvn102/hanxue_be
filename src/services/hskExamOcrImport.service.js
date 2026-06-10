@@ -10,6 +10,7 @@ const path = require('path');
 const db = require('../config/database');
 const gcs = require('./gcs.service');
 const gemini = require('./gemini.service');
+const pdfImageExtract = require('./pdfImageExtract.client');
 
 const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-2.5-flash';
 const IMPORT_LOCATION = process.env.HSK_IMPORT_LOCATION || 'global';
@@ -45,6 +46,18 @@ const ALLOWED_QUESTION_TYPES = new Set([
 
 const ALLOWED_GROUP_TYPES = new Set(['image_grid', 'word_bank', 'reply_bank', 'passage', 'passage_multi']);
 const ALLOWED_SECTION_TYPES = new Set(['listening', 'reading', 'writing']);
+
+// Canonical Vietnamese title per group_type. The AI often labels groups of the
+// SAME type inconsistently (e.g. "Lưới hình", "Bảng ảnh A-F", "Chọn hình") — we
+// normalize known types to one label so the exam UI is consistent. Unknown types
+// keep whatever the AI provided.
+const GROUP_TITLE_BY_TYPE = {
+    image_grid: 'Lưới ảnh A-F',
+    word_bank: 'Ngân hàng từ',
+    reply_bank: 'Ngân hàng câu trả lời',
+    passage: 'Đoạn đọc',
+    passage_multi: 'Đoạn đọc dùng chung',
+};
 
 const HSK_EXPECTED = {
     1: { total: 40, duration: 35, passing: 120, sections: { listening: 20, reading: 20 } },
@@ -146,12 +159,24 @@ async function createJob({ adminId, title, hskLevel, examType, files }) {
     return result.insertId;
 }
 
+// Whitelist of columns updateJob may write. Column names are interpolated into
+// the SQL string (cannot be parameterized), so we MUST restrict them to a known
+// set — never let arbitrary patch keys reach the query (SQL injection on column
+// names otherwise).
+const UPDATABLE_JOB_FIELDS = new Set([
+    'status', 'progress', 'raw_text', 'structured_json',
+    'summary', 'warnings', 'errors', 'exam_id', 'completed_at',
+]);
+
 async function updateJob(jobId, patch) {
     const fields = [];
     const params = [];
     const jsonFields = new Set(['file_names', 'summary', 'warnings', 'errors']);
 
     for (const [field, value] of Object.entries(patch)) {
+        if (!UPDATABLE_JOB_FIELDS.has(field)) {
+            throw new Error(`updateJob: refusing to update unknown column "${field}"`);
+        }
         fields.push(`${field} = ?`);
         if (jsonFields.has(field)) params.push(jsonOrNull(value));
         else params.push(value);
@@ -616,14 +641,27 @@ function normalizePayload(raw, input) {
             questions: Array.isArray(section.questions) ? section.questions : [],
         };
 
-        normalized.groups = normalized.groups.map((group, groupIdx) => ({
-            local_id: group.local_id !== undefined ? String(group.local_id) : String(groupIdx),
-            group_type: String(group.group_type || '').trim(),
-            title_vi: group.title_vi ? String(group.title_vi) : null,
-            instructions_vi: group.instructions_vi ? String(group.instructions_vi) : null,
-            content: group.content && typeof group.content === 'object' ? group.content : null,
-            order_index: Number(group.order_index || groupIdx + 1),
-        }));
+        normalized.groups = normalized.groups.map((group, groupIdx) => {
+            const groupType = String(group.group_type || '').trim();
+            const aiTitle = group.title_vi ? String(group.title_vi).trim() : '';
+            // Standardize title for known group types so groups of the same type
+            // read consistently across the exam. Keep AI title for unknown types.
+            const canonical = GROUP_TITLE_BY_TYPE[groupType];
+            const titleVi = canonical || (aiTitle || null);
+            if (canonical && aiTitle && aiTitle !== canonical) {
+                payload.warnings.push(
+                    `Group "${groupType}" có title "${aiTitle}" → chuẩn hoá thành "${canonical}".`
+                );
+            }
+            return {
+                local_id: group.local_id !== undefined ? String(group.local_id) : String(groupIdx),
+                group_type: groupType,
+                title_vi: titleVi,
+                instructions_vi: group.instructions_vi ? String(group.instructions_vi) : null,
+                content: group.content && typeof group.content === 'object' ? group.content : null,
+                order_index: Number(group.order_index || groupIdx + 1),
+            };
+        });
 
         normalized.questions = normalized.questions.map(q => {
             const questionType = String(q.question_type || '').trim();
@@ -729,6 +767,53 @@ async function uploadAudio(file, jobId) {
     const dir = ensureLocalUploadDir('audio');
     await fs.promises.writeFile(path.join(dir, filename), file.buffer);
     return `/uploads/audio/${filename}`;
+}
+
+/**
+ * Upload the exam PDF to GCS so the Cloud Run extractor can fetch it by gs://.
+ * Returns gs:// ref or null if the images bucket isn't configured.
+ */
+async function uploadPdfToGcs(file, jobId) {
+    if (!file || !file.buffer) return null;
+    const bucketName = gcs.getBucketName('image');
+    if (!bucketName) return null;
+    const filename = `hsk-import-${jobId}-${Date.now()}-${safeFilename(file.originalname)}`;
+    const objectName = `uploads/pdf/${filename}`;
+    const result = await gcs.uploadBuffer({
+        bucketName,
+        objectName,
+        buffer: file.buffer,
+        contentType: file.mimetype || 'application/pdf',
+    });
+    return `gs://${result.bucketName}/${result.objectName}`;
+}
+
+/**
+ * Map Cloud Run-extracted images onto payload questions by question_number.
+ * First image per question wins; only fills `question_image` when empty so we
+ * never clobber anything the AI already provided. Returns count applied.
+ */
+function applyExtractedImages(payload, images, warnings) {
+    if (!Array.isArray(images) || !images.length) return 0;
+    const byQ = new Map();
+    for (const img of images) {
+        const n = Number(img.question_number);
+        if (Number.isFinite(n) && img.gs_url && !byQ.has(n)) byQ.set(n, img.gs_url);
+    }
+    let applied = 0;
+    for (const section of payload.sections) {
+        for (const q of section.questions) {
+            if (!q.question_image && byQ.has(q.question_number)) {
+                q.question_image = byQ.get(q.question_number);
+                applied++;
+            }
+        }
+    }
+    const unmapped = images.filter(i => !Number.isFinite(Number(i.question_number))).length;
+    if (unmapped) {
+        warnings.push(`${unmapped} ảnh PDF chưa map được số câu — cần gán tay trong editor.`);
+    }
+    return applied;
 }
 
 function resolveGroupRef(groupRef, groups, indexMap, localIdMap) {
@@ -884,6 +969,27 @@ async function processJob(jobId, files, input) {
 
         if (validation.errors.length) {
             throw new Error(`Validate import failed: ${validation.errors.join('; ')}`);
+        }
+
+        // 3c: best-effort image extraction via Cloud Run (off-droplet — no OOM
+        // risk). Fills question_image from embedded PDF images. Never blocks the
+        // text import: any failure is downgraded to a warning.
+        if (pdfImageExtract.isConfigured()) {
+            try {
+                const pdfGs = await uploadPdfToGcs(files.examPdf, jobId);
+                if (pdfGs) {
+                    const { images, warnings: imgWarn } = await pdfImageExtract.extractImages({
+                        pdfGs,
+                        jobId,
+                        level: input.hskLevel,
+                    });
+                    const applied = applyExtractedImages(payload, images, allWarnings);
+                    allWarnings.push(...imgWarn);
+                    allWarnings.push(`Tách ảnh PDF: gán ${applied}/${images.length} ảnh vào câu.`);
+                }
+            } catch (e) {
+                allWarnings.push(`Tách ảnh PDF lỗi (bỏ qua, giữ text): ${e.publicMessage || e.message}`);
+            }
         }
 
         const audioUrl = await uploadAudio(files.audioFile, jobId);

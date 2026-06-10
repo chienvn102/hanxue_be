@@ -121,6 +121,12 @@ async function getProfile(req, res) {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        // Self-heal stale streak so a broken chain shows 0, not the last value.
+        try {
+            const streakService = require('../services/streak.service');
+            profile.currentStreak = await streakService.reconcileStreak(req.user.userId);
+        } catch { /* keep stored value on error */ }
+
         res.json(profile);
     } catch (err) {
         console.error('Get profile error:', err);

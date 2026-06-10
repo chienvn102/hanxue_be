@@ -42,8 +42,9 @@ router.get('/import/jobs/:jobId', adminMiddleware, hskExamImportController.getIm
 // Get list of active exams (public)
 router.get('/public', hskExamController.getPublicExamList);
 
-// Get full exam with answers + transcripts (public — không cần làm bài trước)
-router.get('/:id/answers', hskExamController.getExamAnswers);
+// Get full exam with answers + transcripts — requires login (đáp án + transcript
+// là nội dung nhạy cảm, không để lộ cho khách chưa đăng nhập).
+router.get('/:id/answers', authMiddleware, hskExamController.getExamAnswers);
 
 // ============================================================
 // AUTHENTICATED USER ROUTES (for students taking exams)

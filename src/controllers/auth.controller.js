@@ -371,6 +371,10 @@ async function me(req, res) {
         const { resolveAudioUrl } = require('../services/audioUrl.service');
         const avatarUrl = await resolveAudioUrl(user.avatar_url);
 
+        // Self-heal stale streak (3-day streak then skipped days must show 0, not 3).
+        const streakService = require('../services/streak.service');
+        const currentStreak = await streakService.reconcileStreak(user.id).catch(() => user.current_streak);
+
         res.json({
             id: user.id,
             email: user.email,
@@ -382,7 +386,7 @@ async function me(req, res) {
             preferredVoice: user.preferred_voice,
             nativeLanguage: user.native_language,
             totalXp: user.total_xp,
-            currentStreak: user.current_streak,
+            currentStreak,
             isPremium: user.is_premium,
             createdAt: user.created_at,
             hasPassword: !!user.password_set_at,

@@ -60,6 +60,13 @@ exports.createSession = async (req, res) => {
         const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime';
         const voice = process.env.OPENAI_REALTIME_VOICE || 'alloy';
         const ttlSeconds = Math.max(60, parseInt(process.env.OPENAI_REALTIME_TTL_SECONDS || '600', 10));
+        // Input transcription model. whisper-1 mis-hears Mandarin badly in the
+        // Realtime context (the model answers correctly because gpt-realtime
+        // understands the audio directly, but the *displayed* user transcript
+        // from whisper-1 was often wrong). gpt-4o-mini-transcribe / gpt-4o-transcribe
+        // are the current, far more accurate transcription models and accept a
+        // `prompt` hint to bias toward Mandarin.
+        const transcribeModel = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
         // GA shape (POST /v1/realtime/client_secrets) — session config is nested.
         const body = {
@@ -71,9 +78,14 @@ exports.createSession = async (req, res) => {
                 output_modalities: ['audio'],
                 audio: {
                     input: {
-                        // language: 'zh' tells Whisper to assume Chinese, preventing
-                        // it from auto-detecting other languages and producing pinyin.
-                        transcription: { model: 'whisper-1', language: 'zh' },
+                        // language: 'zh' forces Mandarin so the transcriber doesn't
+                        // drift to other languages / pinyin. The prompt hint further
+                        // anchors it to simplified-Chinese HSK conversation.
+                        transcription: {
+                            model: transcribeModel,
+                            language: 'zh',
+                            prompt: '普通话对话，简体中文，HSK 学习场景。请用简体汉字转写。',
+                        },
                         turn_detection: {
                             type: 'server_vad',
                             threshold: 0.5,

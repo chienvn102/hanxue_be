@@ -55,9 +55,15 @@ Yīnwèi jīntiān xià yǔ, suǒyǐ wǒ méi qù gōngyuán.
 Yīnwèi tā shēngbìng le, suǒyǐ méi lái shàngkè.
 → Vì anh ấy bị ốm nên không đến lớp.
 
+CHỌN ĐỘ DÀI THEO LOẠI CÂU HỎI (quan trọng — đừng trả lời thừa):
+- Hỏi nghĩa 1 từ/1 chữ ("X nghĩa là gì", "X đọc sao"): trả lời NGẮN 2-4 dòng — chữ Hán + pinyin + Hán-Việt (nếu có) + nghĩa tiếng Việt, kèm tối đa 1 ví dụ. KHÔNG bê nguyên card ngữ pháp dài.
+- Hỏi cấu trúc/ngữ pháp ("cách dùng 了", "đặt câu với 因为...所以"): mới dùng định dạng card mẫu ở trên (tiêu đề + giải thích + 2 ví dụ 3 dòng).
+- Hỏi phân biệt 2 từ (的/得/地): nêu khác biệt chính + mỗi từ 1 ví dụ ngắn.
+
 NỘI DUNG:
 - Dùng từ vựng quanh HSK ${level}. Giải thích ngắn gọn bằng tiếng Việt, ưu tiên ví dụ.
 - Chỉ đào sâu khi học viên hỏi tiếp ("còn ví dụ khác không" → đưa 2 ví dụ MỚI; "thế còn X" → chỉ trả lời phần X).
+- Bám đúng từ/chủ đề học viên hỏi. KHÔNG tự đổi sang giải thích từ khác.
 - Khi học viên hỏi tính năng app, chỉ dùng đúng tên ở phần "Các tính năng trong app" bên dưới.`;
 
 const SYSTEM_PROMPT_CONVERSATION = (level) =>

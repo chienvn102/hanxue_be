@@ -118,8 +118,49 @@ async function updateStreak(userId) {
 }
 
 /**
+ * Reconcile (self-heal) a user's stored streak at READ time.
+ *
+ * `updateStreak` only runs when the user studies, so a user who hits a 3-day
+ * streak then skips days still has `current_streak = 3` stored. When they open
+ * the app on a later day WITHOUT studying, the UI would show a stale "3".
+ *
+ * This computes the effective streak:
+ *   - last study today or yesterday  → streak still alive, keep stored value
+ *   - last study older (gap)         → streak broken, persist 0 and return 0
+ *
+ * Returns the effective streak. Only writes when it actually changed, so it's
+ * cheap to call on every app-load read (/me, profile).
+ *
+ * @param {number} userId
+ * @returns {Promise<number>} effective current streak
+ */
+async function reconcileStreak(userId) {
+    const [rows] = await db.execute(
+        `SELECT current_streak, last_study_date,
+                DATE_SUB(CURDATE(), INTERVAL 1 DAY) AS yesterday
+         FROM users WHERE id = ?`,
+        [userId]
+    );
+    if (!rows[0]) return 0;
+
+    const cur = rows[0].current_streak || 0;
+    if (cur === 0 || !rows[0].last_study_date) return cur;
+
+    // Lexicographic compare on YYYY-MM-DD is correct for date ordering.
+    const lastStr = new Date(rows[0].last_study_date).toISOString().split('T')[0];
+    const yesterdayStr = new Date(rows[0].yesterday).toISOString().split('T')[0];
+
+    // Alive if last study was yesterday or today.
+    if (lastStr >= yesterdayStr) return cur;
+
+    // Gap detected — streak broken. Persist so all downstream reads agree.
+    await db.execute('UPDATE users SET current_streak = 0 WHERE id = ?', [userId]);
+    return 0;
+}
+
+/**
  * Add XP to user
- * @param {number} userId 
+ * @param {number} userId
  * @param {number} xp - Amount of XP to add
  */
 async function addXP(userId, xp) {
@@ -137,6 +178,7 @@ function calculateXP(quality) {
 
 module.exports = {
     updateStreak,
+    reconcileStreak,
     addXP,
     calculateXP
 };
