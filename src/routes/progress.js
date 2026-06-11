@@ -10,6 +10,7 @@ const router = express.Router();
 
 router.get('/new', authMiddleware, progressController.getNew);
 router.get('/stats', authMiddleware, progressController.getStats);
+router.get('/today', authMiddleware, progressController.getToday);
 router.post('/review', authMiddleware, progressController.submitReview);
 router.get('/:vocabId', authMiddleware, progressController.getProgressById);
 

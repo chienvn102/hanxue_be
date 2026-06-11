@@ -6,6 +6,7 @@
  * notificationScheduler for review reminders.
  */
 
+const db = require('../config/database');
 const ProgressModel = require('../models/progress.model');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
@@ -183,9 +184,59 @@ async function getProgressById(req, res) {
     }
 }
 
+/**
+ * GET /api/progress/today — số liệu hoạt động HÔM NAY cho panel "Mục tiêu hôm nay".
+ * Lấy từ daily_activity (CURDATE) + streak + daily_goal_mins. SRS đã gỡ (HF4)
+ * nên KHÔNG có "due cards"; thay bằng tiến độ thực tế trong ngày.
+ */
+async function getToday(req, res) {
+    try {
+        const userId = req.user.userId;
+        const [rows] = await db.execute(
+            `SELECT
+                COALESCE(da.xp_earned, 0)       AS todayXp,
+                COALESCE(da.words_reviewed, 0)  AS wordsReviewed,
+                COALESCE(da.words_learned, 0)   AS wordsLearned,
+                COALESCE(da.study_mins, 0)      AS studyMins,
+                COALESCE(da.tests_taken, 0)     AS testsTaken,
+                COALESCE(u.current_streak, 0)   AS currentStreak,
+                COALESCE(u.daily_goal_mins, 15) AS dailyGoalMins
+             FROM users u
+             LEFT JOIN daily_activity da
+                 ON da.user_id = u.id AND da.activity_date = CURDATE()
+             WHERE u.id = ?`,
+            [userId]
+        );
+
+        const r = rows[0] || {};
+        const dailyGoalMins = Number(r.dailyGoalMins) || 15;
+        const studyMins = Number(r.studyMins) || 0;
+        // % hoàn thành mục tiêu hôm nay theo phút học (cap 100).
+        const goalPercent = dailyGoalMins > 0
+            ? Math.min(100, Math.round((studyMins / dailyGoalMins) * 100))
+            : 0;
+
+        res.json({
+            todayXp: Number(r.todayXp) || 0,
+            wordsReviewed: Number(r.wordsReviewed) || 0,
+            wordsLearned: Number(r.wordsLearned) || 0,
+            studyMins,
+            testsTaken: Number(r.testsTaken) || 0,
+            currentStreak: Number(r.currentStreak) || 0,
+            dailyGoalMins,
+            goalPercent,
+            goalMet: goalPercent >= 100,
+        });
+    } catch (err) {
+        console.error('Get today activity error:', err);
+        res.status(500).json({ error: 'Failed to get today activity' });
+    }
+}
+
 module.exports = {
     getNew,
     getStats,
+    getToday,
     submitReview,
     getProgressById
 };

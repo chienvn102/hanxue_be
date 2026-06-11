@@ -282,22 +282,73 @@ async function extractAnswerText(file, warnings) {
     }
 }
 
+// Per-level exam blueprints. Ranges/sub-types come from the real HSK papers
+// documented in hsk_refractor/PLAN_HSK1_3.md (HSK 1-3) and the HSK4 fixed form.
+// HSK 5/6 fall through to a generic blueprint until their structure is added.
+const HSK_BLUEPRINTS = {
+    1: [
+        'HSK1 fixed form (40 questions):',
+        '- Listening: questions 1-20.',
+        '  - 1-10 true_false: audio + image. correct_answer A=TRUE, B=FALSE. Put the spoken text in transcript.',
+        '  - 11-15 image_grid_match: ONE shared image_grid group with items A-F. Each question correct_answer is a letter A-F; set group_ref to that group.',
+        '  - 16-20 multiple_choice: audio + 3 options A/B/C. Put per-option pinyin in option.pinyin.',
+        '- Reading: questions 21-40.',
+        '  - 21-25 true_false: image + a Chinese word. correct_answer A=TRUE, B=FALSE.',
+        '  - 26-30 image_grid_match: ONE shared image_grid group A-F; match each sentence to a picture.',
+        '  - 31-35 reply_match: ONE shared reply_bank group A-F; match each sentence to a reply.',
+        '  - 36-40 word_bank_fill: ONE shared word_bank group A-F; fill the blank in each sentence.',
+        '- Create exactly one shared group per cluster (11-15, 26-30, 31-35, 36-40) and set group_ref on every question in that cluster.',
+    ].join('\n'),
+    2: [
+        'HSK2 fixed form (60 questions):',
+        '- Listening: questions 1-35.',
+        '  - 1-10 true_false: audio + image. correct_answer A=TRUE, B=FALSE; spoken text in transcript.',
+        '  - 11-15 image_grid_match: shared image_grid group A-F.',
+        '  - 16-20 image_grid_match: a DIFFERENT shared image_grid group A-E (5 items).',
+        '  - 21-30 multiple_choice: audio + 3 options A/B/C (with option.pinyin).',
+        '  - 31-35 multiple_choice: multi-turn audio dialogue + a 问 question + 3 options.',
+        '- Reading: questions 36-60.',
+        '  - 36-40 image_grid_match: shared image_grid group A-F; match sentence to picture.',
+        '  - 41-45 word_bank_fill: shared word_bank group A-F; fill the blank.',
+        '  - 46-50 true_false: passage + a ★ statement. Put long text in passage, the judged line in statement. correct_answer Đúng/Sai.',
+        '  - 51-55 reply_match: shared reply_bank group A-F.',
+        '  - 56-60 reply_match: a DIFFERENT shared reply_bank group A-E (5 items).',
+        '- Create one shared group per cluster and set group_ref on each question.',
+    ].join('\n'),
+    3: [
+        'HSK3 fixed form (80 questions):',
+        '- Listening: questions 1-40.',
+        '  - 1-10 image_grid_match: shared image_grid group A-F; match each audio dialogue to a picture.',
+        '  - 11-20 true_false: audio + a ★ statement. Put audio in transcript, judged line in statement. correct_answer A=TRUE, B=FALSE.',
+        '  - 21-30 multiple_choice: audio + 3 options A/B/C (no pinyin needed at this level).',
+        '  - 31-40 multiple_choice: audio dialogue + a question + 3 options.',
+        '- Reading: questions 41-70.',
+        '  - 41-45 reply_match: shared reply_bank group A-F.',
+        '  - 46-50 reply_match: a DIFFERENT shared reply_bank group A-E (5 items).',
+        '  - 51-60 word_bank_fill: shared word_bank group A-F; fill the blank in sentence/dialogue.',
+        '  - 61-70 multiple_choice: passage + a ★ statement + 3 options. Put the reading text in passage.',
+        '- Writing: questions 71-80.',
+        '  - 71-75 sentence_assembly. question_text = the shuffled chunks separated by " / "; correct_answer = the full correct sentence.',
+        '  - 76-80 fill_hanzi. Put pinyin hint in meta.pinyin_hint and the sentence-with-blank in meta.context_zh_with_blank; correct_answer = the missing character.',
+        '- Create one shared group per cluster and set group_ref on each question.',
+    ].join('\n'),
+    4: [
+        'HSK4 fixed form:',
+        '- Listening: questions 1-45.',
+        '  - 1-10 true_false, use statement + transcript, correct_answer must be A for TRUE and B for FALSE.',
+        '  - 11-45 multiple_choice, four options A-D where available, transcript hidden in result only.',
+        '- Reading: questions 46-85.',
+        '  - 46-55 word_bank_fill with word_bank groups A-F.',
+        '  - 56-65 sentence_order.',
+        '  - 66-85 multiple_choice. Use passage_multi groups for shared passages.',
+        '- Writing: questions 86-100.',
+        '  - 86-95 sentence_assembly. question_text must contain chunks separated by " / ".',
+        '  - 96-100 image_keyword_sentence. Put keyword in meta.keyword if present.',
+    ].join('\n'),
+};
+
 function buildBlueprint(level) {
-    if (level === 4) {
-        return [
-            'HSK4 fixed form:',
-            '- Listening: questions 1-45.',
-            '  - 1-10 true_false, use statement + transcript, correct_answer must be A for TRUE and B for FALSE.',
-            '  - 11-45 multiple_choice, four options A-D where available, transcript hidden in result only.',
-            '- Reading: questions 46-85.',
-            '  - 46-55 word_bank_fill with word_bank groups A-F.',
-            '  - 56-65 sentence_order.',
-            '  - 66-85 multiple_choice. Use passage_multi groups for shared passages.',
-            '- Writing: questions 86-100.',
-            '  - 86-95 sentence_assembly. question_text must contain chunks separated by " / ".',
-            '  - 96-100 image_keyword_sentence. Put keyword in meta.keyword if present.',
-        ].join('\n');
-    }
+    if (HSK_BLUEPRINTS[level]) return HSK_BLUEPRINTS[level];
 
     const expected = HSK_EXPECTED[level];
     return [
