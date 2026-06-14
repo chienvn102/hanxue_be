@@ -59,6 +59,20 @@ const GROUP_TITLE_BY_TYPE = {
     passage_multi: 'Đoạn đọc dùng chung',
 };
 
+// EXACT content schema mỗi group_type — phải khớp FE GroupHeader.tsx /
+// GroupManager.tsx, nếu không phần "đại diện group" (ngân hàng từ/câu trả lời,
+// đoạn văn, lưới ảnh A-F) sẽ render rỗng. Trước đây prompt chỉ ghi `content: {}`
+// nên AI bỏ trống → group import thiếu nội dung dùng chung.
+const GROUP_CONTENT_SCHEMA_GUIDE = [
+    'CÁCH ĐIỀN group.content THEO group_type (BẮT BUỘC — copy nguyên văn tiếng Trung từ PDF, KHÔNG bịa):',
+    '- word_bank: { "items": [ {"label":"A","word":"<từ in trên đề>","pinyin":"<nếu có>"}, ... A→F ], "example"?: {"label":"<chữ ví dụ>","sentence_zh":"<câu 例如>","sentence_pinyin":"<nếu có>"} }',
+    '- reply_bank: { "items": [ {"label":"A","sentence_zh":"<câu trả lời in trên đề>","sentence_pinyin":"<nếu có>"}, ... A→F ], "example"?: {"label":"...","prompt_zh":"<câu 例如>","prompt_pinyin":"..."} }',
+    '- image_grid: { "items": [ {"label":"A","image_url":"","alt_vi":""}, ... đúng SỐ Ô A→F/A→E ], "example"?: {"label":"<chữ>","content":{"zh":"<câu 例如>","pinyin":"..."}} } — KHÔNG nhìn thấy ảnh nên để image_url RỖNG; chỉ tạo đủ số ô đúng nhãn, hệ thống sẽ tự gán ảnh sau.',
+    '- passage: { "passage_zh":"<đoạn văn nguyên văn>", "passage_pinyin"?:"", "passage_vi"?:"" }',
+    '- passage_multi: { "passage":"<đoạn văn dùng chung nguyên văn>", "passage_pinyin"?:"", "passage_vi"?:"" }',
+    'Mỗi câu thuộc cụm dùng chung PHẢI set group_ref = local_id của group tương ứng. Nếu thiếu nội dung bank/đoạn văn trong PDF → để rỗng và push warning, KHÔNG tự nghĩ ra.',
+].join('\n');
+
 const HSK_EXPECTED = {
     1: { total: 40, duration: 35, passing: 120, sections: { listening: 20, reading: 20 } },
     2: { total: 60, duration: 50, passing: 120, sections: { listening: 35, reading: 25 } },
@@ -429,6 +443,7 @@ function buildPrompt({ title, hskLevel, examType, pdfText, answerText }) {
         `- question_type chỉ được là: ${Array.from(ALLOWED_QUESTION_TYPES).join(', ')}.`,
         `- group_type chỉ được là: ${Array.from(ALLOWED_GROUP_TYPES).join(', ')}.`,
         '- group_ref trỏ tới groups[].local_id hoặc index nhóm trong cùng section.',
+        GROUP_CONTENT_SCHEMA_GUIDE,
         '- options có thể là string[] hoặc object[] {label,text,pinyin}; correct_answer dùng label A/B/C/D hoặc đáp án mẫu. true_false bắt buộc A=TRUE, B=FALSE.',
         '- Với sentence_assembly, question_text là các mảnh theo format "词1 / 词2 / 词3".',
         '- Với image_keyword_sentence, nếu ảnh chưa extract được thì question_image rỗng và meta.keyword chứa từ khóa.',
@@ -502,6 +517,7 @@ function buildSectionPrompt({ hskLevel, pdfText, answerText }, plan) {
         `- question_type chỉ được là: ${Array.from(ALLOWED_QUESTION_TYPES).join(', ')}.`,
         `- group_type chỉ được là: ${Array.from(ALLOWED_GROUP_TYPES).join(', ')}.`,
         '- group_ref trỏ tới groups[].local_id hoặc index nhóm trong cùng section.',
+        GROUP_CONTENT_SCHEMA_GUIDE,
         '- correct_answer dùng label A/B/C/D hoặc đáp án mẫu. true_false bắt buộc A=TRUE, B=FALSE.',
         '- Không include câu ngoài range được yêu cầu.',
         '',
@@ -767,6 +783,24 @@ function validatePayload(payload, input) {
             if (!ALLOWED_GROUP_TYPES.has(group.group_type)) {
                 errors.push(`group_type không hợp lệ ở section ${section.section_order}: ${group.group_type}`);
             }
+            // Cảnh báo (KHÔNG chặn import) khi nội dung dùng chung của group bị
+            // trống — đây là phần "đại diện group" trước đây hay bị thiếu.
+            const c = group.content && typeof group.content === 'object' ? group.content : {};
+            const gid = group.local_id;
+            if ((group.group_type === 'word_bank' || group.group_type === 'reply_bank')
+                && !(Array.isArray(c.items) && c.items.length)) {
+                warnings.push(`Group ${gid} (${group.group_type}) thiếu danh sách items A-F — cần bổ sung trong editor.`);
+            }
+            if (group.group_type === 'image_grid'
+                && !(Array.isArray(c.items) && c.items.length)) {
+                warnings.push(`Group ${gid} (image_grid) chưa có ô ảnh A-F — sẽ thử gán từ ảnh tách PDF, nếu không phải thêm tay.`);
+            }
+            if (group.group_type === 'passage' && !String(c.passage_zh || '').trim()) {
+                warnings.push(`Group ${gid} (passage) thiếu passage_zh — cần bổ sung đoạn văn.`);
+            }
+            if (group.group_type === 'passage_multi' && !String(c.passage || '').trim()) {
+                warnings.push(`Group ${gid} (passage_multi) thiếu passage — cần bổ sung đoạn văn.`);
+            }
         }
 
         for (const question of section.questions) {
@@ -840,27 +874,100 @@ async function uploadPdfToGcs(file, jobId) {
 }
 
 /**
- * Map Cloud Run-extracted images onto payload questions by question_number.
- * First image per question wins; only fills `question_image` when empty so we
- * never clobber anything the AI already provided. Returns count applied.
+ * Map Cloud Run-extracted images onto the payload.
+ *
+ * Hai đích KHÁC NHAU (đây là lý do bản cũ "mất ảnh image_grid"):
+ *  1) Lưới ảnh A-F (group_type=image_grid): các ảnh là tài nguyên dùng chung của
+ *     GROUP → điền vào group.content.items[].image_url theo thứ tự đọc (page→y→x),
+ *     KHÔNG gộp theo question_number (gộp sẽ rớt 5/6 ảnh cùng cụm).
+ *  2) Ảnh riêng 1 câu (image_match…): điền question_image cho đúng số câu.
+ *
+ * Ảnh đã dùng cho lưới sẽ không tái dùng cho question_image. Chỉ điền khi đang
+ * trống — không ghi đè thứ AI/đề đã có. Trả về tổng số ảnh đã gán.
  */
 function applyExtractedImages(payload, images, warnings) {
     if (!Array.isArray(images) || !images.length) return 0;
-    const byQ = new Map();
-    for (const img of images) {
-        const n = Number(img.question_number);
-        if (Number.isFinite(n) && img.gs_url && !byQ.has(n)) byQ.set(n, img.gs_url);
-    }
+
+    // Chuẩn hoá + sắp theo thứ tự đọc. bbox = [x0,y0,x1,y1] (PDF points).
+    const sorted = images
+        .filter(im => im && im.gs_url)
+        .map(im => {
+            const bbox = Array.isArray(im.bbox) ? im.bbox : [0, 0, 0, 0];
+            return {
+                n: Number(im.question_number),
+                gs: String(im.gs_url),
+                page: Number(im.page) || 0,
+                y: Number(bbox[1]) || 0,
+                x: Number(bbox[0]) || 0,
+            };
+        })
+        .sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
+
+    const used = new Set(); // chỉ số trong `sorted` đã gán cho lưới ảnh
     let applied = 0;
+
+    // group_ref khớp group qua local_id HOẶC index (giống resolveGroupRef lúc insert).
+    const refMatchesGroup = (ref, group, groupIdx) => {
+        if (ref === null || ref === undefined || ref === '') return false;
+        if (typeof ref === 'number') return ref === groupIdx || ref === groupIdx + 1;
+        return String(ref) === String(group.local_id);
+    };
+
+    // --- Pass 1: image_grid → group.content.items[].image_url ---
+    for (const section of payload.sections) {
+        const groups = section.groups || [];
+        for (let g = 0; g < groups.length; g += 1) {
+            const group = groups[g];
+            if (group.group_type !== 'image_grid') continue;
+            const refNums = new Set(
+                section.questions
+                    .filter(q => refMatchesGroup(q.group_ref, group, g))
+                    .map(q => q.question_number)
+            );
+            if (!refNums.size) continue;
+
+            const gridIdx = [];
+            sorted.forEach((im, idx) => {
+                if (!used.has(idx) && Number.isFinite(im.n) && refNums.has(im.n)) gridIdx.push(idx);
+            });
+            if (!gridIdx.length) continue;
+
+            const content = (group.content && typeof group.content === 'object') ? group.content : {};
+            let items = Array.isArray(content.items) && content.items.length ? content.items : null;
+            // AI quên tạo ô → tự tạo theo đúng số ảnh tìm được.
+            if (!items) {
+                items = gridIdx.map((_, i) => ({ label: String.fromCharCode(65 + i), image_url: '', alt_vi: '' }));
+            }
+            let gi = 0;
+            for (const it of items) {
+                if (!it.image_url && gi < gridIdx.length) {
+                    it.image_url = sorted[gridIdx[gi]].gs;
+                    used.add(gridIdx[gi]);
+                    gi += 1;
+                    applied += 1;
+                }
+            }
+            content.items = items;
+            group.content = content;
+        }
+    }
+
+    // --- Pass 2: ảnh riêng từng câu (bỏ qua ảnh đã dùng cho lưới) ---
+    const byQ = new Map();
+    sorted.forEach((im, idx) => {
+        if (used.has(idx) || !Number.isFinite(im.n)) return;
+        if (!byQ.has(im.n)) byQ.set(im.n, im.gs);
+    });
     for (const section of payload.sections) {
         for (const q of section.questions) {
             if (!q.question_image && byQ.has(q.question_number)) {
                 q.question_image = byQ.get(q.question_number);
-                applied++;
+                applied += 1;
             }
         }
     }
-    const unmapped = images.filter(i => !Number.isFinite(Number(i.question_number))).length;
+
+    const unmapped = sorted.filter(im => !Number.isFinite(im.n)).length;
     if (unmapped) {
         warnings.push(`${unmapped} ảnh PDF chưa map được số câu — cần gán tay trong editor.`);
     }
@@ -1023,8 +1130,8 @@ async function processJob(jobId, files, input) {
         }
 
         // 3c: best-effort image extraction via Cloud Run (off-droplet — no OOM
-        // risk). Fills question_image from embedded PDF images. Never blocks the
-        // text import: any failure is downgraded to a warning.
+        // risk). Điền question_image (ảnh 1 câu) + group.content.items[].image_url
+        // (lưới ảnh A-F). Never blocks the text import: lỗi → warning.
         if (pdfImageExtract.isConfigured()) {
             try {
                 const pdfGs = await uploadPdfToGcs(files.examPdf, jobId);
@@ -1036,11 +1143,17 @@ async function processJob(jobId, files, input) {
                     });
                     const applied = applyExtractedImages(payload, images, allWarnings);
                     allWarnings.push(...imgWarn);
-                    allWarnings.push(`Tách ảnh PDF: gán ${applied}/${images.length} ảnh vào câu.`);
+                    allWarnings.push(`Tách ảnh PDF: gán ${applied}/${images.length} ảnh (gồm cả lưới ảnh A-F).`);
+                    // Re-save preview để admin thấy đúng bản sẽ insert (đã có ảnh).
+                    await updateJob(jobId, { structured_json: JSON.stringify(payload), warnings: allWarnings });
+                } else {
+                    allWarnings.push('Không upload được PDF lên GCS để tách ảnh (thiếu bucket ảnh) — ảnh sẽ trống.');
                 }
             } catch (e) {
                 allWarnings.push(`Tách ảnh PDF lỗi (bỏ qua, giữ text): ${e.publicMessage || e.message}`);
             }
+        } else {
+            allWarnings.push('Tách ảnh PDF CHƯA BẬT (thiếu env PDF_EXTRACT_URL) — ảnh đề và lưới ảnh A-F sẽ trống, cần gán tay trong editor.');
         }
 
         const audioUrl = await uploadAudio(files.audioFile, jobId);
