@@ -184,14 +184,22 @@ async function genVocabAudioEdge(vocabId, { voice = 'female' } = {}) {
 }
 
 async function genTextAudioEdge(text, { voice = 'female' } = {}) {
-    const cleaned = normalizeText(text);
+    // GIỮ xuống dòng (chỉ gộp space/tab) để parser hội thoại tách đúng lượt nói
+    // có nhãn người nói (男：/女：/老师：…). Vocab 1 từ → vẫn là 1 đoạn như cũ.
+    const cleaned = String(text || '')
+        .replace(/\r\n/g, '\n')
+        .replace(/[ \t ]+/g, ' ')
+        .replace(/\n{2,}/g, '\n')
+        .split('\n').map(l => l.trim()).join('\n')
+        .trim();
     if (!cleaned) {
         const err = new Error('Text is required for TTS');
         err.status = 400;
         throw err;
     }
-    if (cleaned.length > 200) {
-        const err = new Error('Text quá dài (tối đa 200 ký tự)');
+    // Cho phép bài khoá dài (hội thoại được tách thành nhiều đoạn ngắn khi gen).
+    if (cleaned.length > 3000) {
+        const err = new Error('Text quá dài (tối đa 3000 ký tự) — tách nhỏ rồi tạo lại.');
         err.status = 400;
         throw err;
     }
@@ -207,7 +215,8 @@ async function genTextAudioEdge(text, { voice = 'female' } = {}) {
     } catch { /* not cached */ }
 
     if (!exists) {
-        await edgeTts.synthesizeToFile(cleaned, outputFile, { voice });
+        // Tự xử lý hội thoại nhiều người nói (giọng nam/nữ + ffmpeg concat).
+        await edgeTts.synthesizeDialogueToFile(cleaned, outputFile, { defaultVoice: voice });
     }
 
     const audioUrl = `/audio/${relPath}`;
