@@ -184,10 +184,17 @@ async function getProgressById(req, res) {
     }
 }
 
+// Mục tiêu XP mỗi ngày cho panel "Mục tiêu hôm nay" (chỉnh qua env nếu cần).
+// ~6-7 lần ôn đúng hoặc 2-3 bài học là đạt.
+const DAILY_XP_GOAL = (() => {
+    const n = parseInt(process.env.DAILY_XP_GOAL || '50', 10);
+    return Number.isFinite(n) && n > 0 ? n : 50;
+})();
+
 /**
  * GET /api/progress/today — số liệu hoạt động HÔM NAY cho panel "Mục tiêu hôm nay".
- * Lấy từ daily_activity (CURDATE) + streak + daily_goal_mins. SRS đã gỡ (HF4)
- * nên KHÔNG có "due cards"; thay bằng tiến độ thực tế trong ngày.
+ * Mục tiêu theo XP (không phải phút). words_reviewed/words_learned được ghi tại
+ * progressTracker.recordVocabAttempt. SRS đã gỡ (HF4) nên không có "due cards".
  */
 async function getToday(req, res) {
     try {
@@ -197,10 +204,7 @@ async function getToday(req, res) {
                 COALESCE(da.xp_earned, 0)       AS todayXp,
                 COALESCE(da.words_reviewed, 0)  AS wordsReviewed,
                 COALESCE(da.words_learned, 0)   AS wordsLearned,
-                COALESCE(da.study_mins, 0)      AS studyMins,
-                COALESCE(da.tests_taken, 0)     AS testsTaken,
-                COALESCE(u.current_streak, 0)   AS currentStreak,
-                COALESCE(u.daily_goal_mins, 15) AS dailyGoalMins
+                COALESCE(u.current_streak, 0)   AS currentStreak
              FROM users u
              LEFT JOIN daily_activity da
                  ON da.user_id = u.id AND da.activity_date = CURDATE()
@@ -209,23 +213,18 @@ async function getToday(req, res) {
         );
 
         const r = rows[0] || {};
-        const dailyGoalMins = Number(r.dailyGoalMins) || 15;
-        const studyMins = Number(r.studyMins) || 0;
-        // % hoàn thành mục tiêu hôm nay theo phút học (cap 100).
-        const goalPercent = dailyGoalMins > 0
-            ? Math.min(100, Math.round((studyMins / dailyGoalMins) * 100))
-            : 0;
+        const todayXp = Number(r.todayXp) || 0;
+        const dailyXpGoal = DAILY_XP_GOAL;
+        const goalPercent = Math.min(100, Math.round((todayXp / dailyXpGoal) * 100));
 
         res.json({
-            todayXp: Number(r.todayXp) || 0,
+            todayXp,
             wordsReviewed: Number(r.wordsReviewed) || 0,
             wordsLearned: Number(r.wordsLearned) || 0,
-            studyMins,
-            testsTaken: Number(r.testsTaken) || 0,
             currentStreak: Number(r.currentStreak) || 0,
-            dailyGoalMins,
+            dailyXpGoal,
             goalPercent,
-            goalMet: goalPercent >= 100,
+            goalMet: todayXp >= dailyXpGoal,
         });
     } catch (err) {
         console.error('Get today activity error:', err);

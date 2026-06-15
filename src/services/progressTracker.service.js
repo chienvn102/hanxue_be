@@ -15,8 +15,34 @@
  * Pure DB I/O — no HTTP / no auth checks (caller already authed user).
  */
 
+const db = require('../config/database');
 const ProgressModel = require('../models/progress.model');
 const { nextSrs } = require('./srs.service');
+
+/**
+ * Đếm hoạt động ôn tập trong ngày vào daily_activity (cho panel "Mục tiêu hôm
+ * nay"). Trước đây các cột này KHÔNG bao giờ được ghi nên luôn = 0.
+ * Best-effort: lỗi không được làm hỏng việc ghi tiến độ.
+ *
+ * @param {number} userId
+ * @param {boolean} learned true nếu đây là lần ĐẦU học từ này (words_learned).
+ */
+async function bumpDailyVocab(userId, learned) {
+    try {
+        await db.execute(
+            `INSERT INTO daily_activity (user_id, activity_date, words_reviewed, words_learned)
+             VALUES (?, CURDATE(), 1, ?)
+             ON DUPLICATE KEY UPDATE
+                words_reviewed = COALESCE(words_reviewed, 0) + 1,
+                words_learned  = COALESCE(words_learned, 0) + VALUES(words_learned)`,
+            [userId, learned ? 1 : 0]
+        );
+    } catch (error) {
+        if (error.code !== 'ER_BAD_FIELD_ERROR' && error.code !== 'ER_NO_SUCH_TABLE') {
+            console.error('[progressTracker] daily_activity bump failed:', error.message);
+        }
+    }
+}
 
 /** Mirrors deriveMastery in progress.controller (kept in sync). */
 function deriveMastery(timesSeen, timesCorrect) {
@@ -74,6 +100,7 @@ async function recordVocabAttempt(userId, vocabId, quality, meta = {}) {
             responseMs: meta.responseMs ?? null,
             srs,
         });
+        await bumpDailyVocab(userIdInt, true); // từ mới học lần đầu
         return { created: true, source: meta.source || 'unknown' };
     }
 
@@ -89,6 +116,7 @@ async function recordVocabAttempt(userId, vocabId, quality, meta = {}) {
         avgResponseMs: newAvgMs,
         srs,
     });
+    await bumpDailyVocab(userIdInt, false); // ôn lại từ đã có
     return { created: false, source: meta.source || 'unknown' };
 }
 
