@@ -7,6 +7,68 @@ const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
 const Course = require('../models/course.model');
 
+/**
+ * POST /api/admin/lessons/passage-assist
+ * Body: { passage_zh }
+ * Dùng Groq (JSON mode) sinh pinyin (có dấu thanh) + bản dịch tiếng Việt cho
+ * bài khoá, giữ nguyên xuống dòng / người nói. Trả { success, pinyin, vi }.
+ */
+exports.passageAssist = async (req, res) => {
+    try {
+        const passageZh = String(req.body?.passage_zh || '').trim();
+        if (!passageZh) {
+            return res.status(400).json({ success: false, message: 'Thiếu nội dung chữ Hán (passage_zh).' });
+        }
+        if (passageZh.length > 4000) {
+            return res.status(400).json({ success: false, message: 'Bài khoá quá dài (>4000 ký tự) — tách nhỏ rồi tạo lại.' });
+        }
+
+        const groq = require('../services/groq');
+        const messages = [
+            {
+                role: 'system',
+                content: 'Bạn là trợ lý biên soạn giáo trình tiếng Trung cho người Việt. Luôn trả về JSON hợp lệ, không kèm giải thích.',
+            },
+            {
+                role: 'user',
+                content:
+                    'Cho đoạn bài khoá tiếng Trung dưới đây. Trả về JSON đúng dạng ' +
+                    '{"pinyin": "...", "vi": "..."}:\n' +
+                    '- "pinyin": phiên âm pinyin CÓ DẤU THANH (ā á ǎ à...), mỗi âm tiết cách nhau 1 dấu cách, ' +
+                    'GIỮ NGUYÊN xuống dòng, dấu câu và nhãn người nói (vd "老师：") như bản gốc.\n' +
+                    '- "vi": bản dịch tiếng Việt tự nhiên, GIỮ NGUYÊN cấu trúc dòng và người nói.\n' +
+                    'Chỉ trả JSON.\n\n---\n' +
+                    passageZh,
+            },
+        ];
+
+        const { text } = await groq.sendMessage(messages, 'passage-assist', {
+            jsonMode: true,
+            maxTokens: 4000,
+            temperature: 0.2,
+        });
+
+        let parsed;
+        try {
+            parsed = JSON.parse(text);
+        } catch {
+            return res.status(502).json({ success: false, message: 'AI trả về dữ liệu không hợp lệ, thử lại.' });
+        }
+
+        res.json({
+            success: true,
+            pinyin: String(parsed.pinyin || ''),
+            vi: String(parsed.vi || ''),
+        });
+    } catch (error) {
+        console.error('Passage assist error:', error.message);
+        res.status(error.status || 500).json({
+            success: false,
+            message: error.publicMessage || 'Lỗi tạo pinyin/bản dịch. Thử lại sau.',
+        });
+    }
+};
+
 // Get all lessons for a course.
 // ?include_inactive=1: trả cả bài soft-deleted — chỉ cho admin (route đã gắn
 // admin middleware ở admin context). Public endpoint giữ default behaviour.

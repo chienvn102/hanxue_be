@@ -5,6 +5,7 @@ const adminMiddleware = require('../middleware/admin.middleware');
 const audioGenController = require('../controllers/audioGen.controller');
 const adminUserController = require('../controllers/adminUser.controller');
 const grammarQuizAdminController = require('../controllers/grammarQuizAdmin.controller');
+const lessonController = require('../controllers/lesson.controller');
 
 // Public admin routes
 router.post('/login', adminAuthController.login);
@@ -22,6 +23,8 @@ router.post('/vocab/:id/gen-audio-edge', adminMiddleware, audioGenController.gen
 router.post('/gen-audio-text-edge', adminMiddleware, audioGenController.genTextAudioEdge);
 router.post('/hsk-questions/:id/gen-audio', adminMiddleware, audioGenController.genHskQuestionAudio);
 router.post('/lessons/:id/gen-audio', adminMiddleware, audioGenController.genLessonAudio);
+// AI tạo pinyin + bản dịch tiếng Việt từ passage_zh (Groq, JSON mode)
+router.post('/lessons/passage-assist', adminMiddleware, lessonController.passageAssist);
 router.post('/examples/:id/gen-audio', adminMiddleware, audioGenController.genExampleAudio);
 router.post('/gen-image', adminMiddleware, audioGenController.genImage);
 

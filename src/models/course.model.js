@@ -129,10 +129,11 @@ const Course = {
 
     create: async ({ hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index }) => {
         const [result] = await db.execute(
-            `INSERT INTO courses 
-            (hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index) 
+            `INSERT INTO courses
+            (hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index)
             VALUES (?, ?, ?, ?, ?, ?)`,
-            [hsk_level, title, description, thumbnail_url, prerequisite_course_id || null, order_index || 0]
+            // mysql2 cấm bind `undefined` → ép về null cho field optional.
+            [hsk_level, title, description ?? null, thumbnail_url ?? null, prerequisite_course_id ?? null, order_index ?? 0]
         );
         return result.insertId;
     },
