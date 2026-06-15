@@ -10,8 +10,10 @@ const Course = require('../models/course.model');
 /**
  * POST /api/admin/lessons/passage-assist
  * Body: { passage_zh }
- * Dùng Groq (JSON mode) sinh pinyin (có dấu thanh) + bản dịch tiếng Việt cho
- * bài khoá, giữ nguyên xuống dòng / người nói. Trả { success, pinyin, vi }.
+ * Dùng Gemini (Vertex, JSON schema) sinh pinyin (có dấu thanh) + BẢN DỊCH TIẾNG
+ * VIỆT cho bài khoá, giữ nguyên xuống dòng / người nói. Gemini dịch Trung→Việt
+ * tốt hơn Groq/llama (vốn hay echo lại nguyên văn tiếng Trung).
+ * Trả { success, pinyin, vi }.
  */
 exports.passageAssist = async (req, res) => {
     try {
@@ -23,34 +25,40 @@ exports.passageAssist = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Bài khoá quá dài (>4000 ký tự) — tách nhỏ rồi tạo lại.' });
         }
 
-        const groq = require('../services/groq');
-        const messages = [
-            {
-                role: 'system',
-                content: 'Bạn là trợ lý biên soạn giáo trình tiếng Trung cho người Việt. Luôn trả về JSON hợp lệ, không kèm giải thích.',
-            },
-            {
-                role: 'user',
-                content:
-                    'Cho đoạn bài khoá tiếng Trung dưới đây. Trả về JSON đúng dạng ' +
-                    '{"pinyin": "...", "vi": "..."}:\n' +
-                    '- "pinyin": phiên âm pinyin CÓ DẤU THANH (ā á ǎ à...), mỗi âm tiết cách nhau 1 dấu cách, ' +
-                    'GIỮ NGUYÊN xuống dòng, dấu câu và nhãn người nói (vd "老师：") như bản gốc.\n' +
-                    '- "vi": bản dịch tiếng Việt tự nhiên, GIỮ NGUYÊN cấu trúc dòng và người nói.\n' +
-                    'Chỉ trả JSON.\n\n---\n' +
-                    passageZh,
-            },
-        ];
+        const gemini = require('../services/gemini.service');
+        const systemInstruction =
+            'Bạn là biên dịch viên giáo trình tiếng Trung sang TIẾNG VIỆT cho người Việt học HSK. ' +
+            'Luôn dịch sang tiếng Việt tự nhiên, chính xác; TUYỆT ĐỐI KHÔNG giữ lại chữ Hán trong phần dịch.';
+        const prompt =
+            'Cho đoạn bài khoá tiếng Trung dưới đây, hãy tạo 2 trường:\n' +
+            '1) "pinyin": phiên âm pinyin CÓ DẤU THANH (ā á ǎ à, ō ó ǒ ò...), mỗi âm tiết cách nhau 1 dấu cách, ' +
+            'GIỮ NGUYÊN xuống dòng, dấu câu và nhãn người nói (vd "老师：").\n' +
+            '2) "vi": BẢN DỊCH TIẾNG VIỆT hoàn chỉnh và tự nhiên — TUYỆT ĐỐI KHÔNG để lại bất kỳ chữ Hán nào; ' +
+            'dịch hết sang tiếng Việt, giữ nguyên cấu trúc dòng và người nói.\n\n' +
+            '--- BÀI KHOÁ (tiếng Trung) ---\n' +
+            passageZh;
 
-        const { text } = await groq.sendMessage(messages, 'passage-assist', {
-            jsonMode: true,
-            maxTokens: 4000,
-            temperature: 0.2,
-        });
+        const { text } = await gemini.chat(
+            [{ role: 'user', content: prompt }],
+            {
+                systemInstruction,
+                temperature: 0.2,
+                maxOutputTokens: 4096,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: 'object',
+                    properties: {
+                        pinyin: { type: 'string' },
+                        vi: { type: 'string' },
+                    },
+                    required: ['pinyin', 'vi'],
+                },
+            }
+        );
 
         let parsed;
         try {
-            parsed = JSON.parse(text);
+            parsed = JSON.parse(gemini.unwrapJsonFence(text));
         } catch {
             return res.status(502).json({ success: false, message: 'AI trả về dữ liệu không hợp lệ, thử lại.' });
         }
