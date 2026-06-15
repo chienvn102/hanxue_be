@@ -35,6 +35,7 @@ async function toUserResponse(user) {
         targetHsk: user.target_hsk,
         completedHskLevels: UserModel.parseJsonArray(user.completed_hsk_levels).map(Number).filter(Number.isFinite),
         dailyGoalMins: user.daily_goal_mins,
+        dailyGoalXp: user.daily_goal_xp ?? 50,
         preferredVoice: user.preferred_voice,
         totalXp: user.total_xp || 0,
         currentStreak: user.current_streak || 0,
@@ -85,6 +86,14 @@ function normalizeProfileInput(body) {
             throw new Error('Daily goal must be between 1 and 600 minutes');
         }
         data.dailyGoalMins = dailyGoalMins;
+    }
+
+    if (body.dailyGoalXp !== undefined) {
+        const dailyGoalXp = Number(body.dailyGoalXp);
+        if (!Number.isInteger(dailyGoalXp) || dailyGoalXp < 10 || dailyGoalXp > 1000) {
+            throw new Error('Daily XP goal must be between 10 and 1000');
+        }
+        data.dailyGoalXp = dailyGoalXp;
     }
 
     if (body.preferredVoice !== undefined) {

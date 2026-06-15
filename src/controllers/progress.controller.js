@@ -201,20 +201,22 @@ async function getToday(req, res) {
         const userId = req.user.userId;
         const [rows] = await db.execute(
             `SELECT
-                COALESCE(da.xp_earned, 0)       AS todayXp,
-                COALESCE(da.words_reviewed, 0)  AS wordsReviewed,
-                COALESCE(da.words_learned, 0)   AS wordsLearned,
-                COALESCE(u.current_streak, 0)   AS currentStreak
+                COALESCE(da.xp_earned, 0)         AS todayXp,
+                COALESCE(da.words_reviewed, 0)    AS wordsReviewed,
+                COALESCE(da.words_learned, 0)     AS wordsLearned,
+                COALESCE(u.current_streak, 0)     AS currentStreak,
+                COALESCE(u.daily_goal_xp, ?)      AS dailyGoalXp
              FROM users u
              LEFT JOIN daily_activity da
                  ON da.user_id = u.id AND da.activity_date = CURDATE()
              WHERE u.id = ?`,
-            [userId]
+            [DAILY_XP_GOAL, userId]
         );
 
         const r = rows[0] || {};
         const todayXp = Number(r.todayXp) || 0;
-        const dailyXpGoal = DAILY_XP_GOAL;
+        // Ưu tiên mục tiêu user tự chọn (users.daily_goal_xp); fallback hằng số.
+        const dailyXpGoal = Number(r.dailyGoalXp) > 0 ? Number(r.dailyGoalXp) : DAILY_XP_GOAL;
         const goalPercent = Math.min(100, Math.round((todayXp / dailyXpGoal) * 100));
 
         res.json({

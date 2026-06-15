@@ -65,9 +65,9 @@ async function findByIdForAuth(id) {
 async function findById(id) {
     const [rows] = await db.execute(
         `SELECT id, email, display_name, avatar_url, role, is_active, target_hsk,
-                daily_goal_mins, preferred_voice, google_id, email_verified, completed_hsk_levels,
+                daily_goal_mins, daily_goal_xp, preferred_voice, google_id, email_verified, completed_hsk_levels,
                 password_set_at, profile_completed_at,
-                total_xp, current_streak, longest_streak, total_study_days, 
+                total_xp, current_streak, longest_streak, total_study_days,
                 last_study_date, native_language, is_premium, created_at
          FROM users WHERE id = ?`,
         [id]
@@ -189,6 +189,7 @@ async function updateProfile(userId, {
     targetHsk,
     nativeLanguage,
     dailyGoalMins,
+    dailyGoalXp,
     preferredVoice,
     avatarUrl
 }) {
@@ -211,6 +212,10 @@ async function updateProfile(userId, {
         sql += 'daily_goal_mins = ?, ';
         params.push(dailyGoalMins);
     }
+    if (dailyGoalXp !== undefined) {
+        sql += 'daily_goal_xp = ?, ';
+        params.push(dailyGoalXp);
+    }
     if (preferredVoice !== undefined) {
         sql += 'preferred_voice = ?, ';
         params.push(preferredVoice);
@@ -227,8 +232,11 @@ async function updateProfile(userId, {
     sql += ' WHERE id = ?';
     params.push(userId);
 
-    const [result] = await db.execute(sql, params);
-    return result.affectedRows > 0;
+    await db.execute(sql, params);
+    // Caller (controller) đã xác thực user tồn tại qua auth middleware. MySQL trả
+    // affectedRows = 0 khi giá trị KHÔNG đổi (lưu lại y nguyên) — đó KHÔNG phải lỗi.
+    // Trước đây `affectedRows > 0` khiến lưu-không-đổi báo "Failed to update profile".
+    return true;
 }
 
 /**

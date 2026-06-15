@@ -383,6 +383,7 @@ async function me(req, res) {
             targetHsk: user.target_hsk,
             completedHskLevels: UserModel.parseJsonArray(user.completed_hsk_levels).map(Number).filter(Number.isFinite),
             dailyGoalMins: user.daily_goal_mins,
+            dailyGoalXp: user.daily_goal_xp ?? 50,
             preferredVoice: user.preferred_voice,
             nativeLanguage: user.native_language,
             totalXp: user.total_xp,
