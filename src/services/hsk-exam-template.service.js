@@ -259,7 +259,8 @@ function buildGroupContent(group) {
         label: String.fromCharCode(65 + i), // A, B, C, ...
     }));
     if (group.type === 'image_grid') {
-        return { items: items.map(it => ({ ...it, image_url: '' })) };
+        // Chuẩn mới: 1 ảnh ghép A–F (admin upload 1 tấm). `items` chỉ giữ label để render đáp án.
+        return { image_url: '', items };
     }
     if (group.type === 'word_bank') {
         return { items: items.map(it => ({ ...it, zh: '', pinyin: '', vi: '' })) };

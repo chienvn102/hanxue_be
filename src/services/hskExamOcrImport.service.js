@@ -11,6 +11,7 @@ const db = require('../config/database');
 const gcs = require('./gcs.service');
 const gemini = require('./gemini.service');
 const pdfImageExtract = require('./pdfImageExtract.client');
+const { TEMPLATES } = require('./hsk-exam-template.service'); // nguồn chuẩn cấu trúc đề (range→type)
 
 const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-2.5-flash';
 const IMPORT_LOCATION = process.env.HSK_IMPORT_LOCATION || 'global';
@@ -67,7 +68,7 @@ const GROUP_CONTENT_SCHEMA_GUIDE = [
     'CÁCH ĐIỀN group.content THEO group_type (BẮT BUỘC — copy nguyên văn tiếng Trung từ PDF, KHÔNG bịa):',
     '- word_bank: { "items": [ {"label":"A","word":"<từ in trên đề>","pinyin":"<nếu có>"}, ... A→F ], "example"?: {"label":"<chữ ví dụ>","sentence_zh":"<câu 例如>","sentence_pinyin":"<nếu có>"} }',
     '- reply_bank: { "items": [ {"label":"A","sentence_zh":"<câu trả lời in trên đề>","sentence_pinyin":"<nếu có>"}, ... A→F ], "example"?: {"label":"...","prompt_zh":"<câu 例如>","prompt_pinyin":"..."} }',
-    '- image_grid: { "items": [ {"label":"A","image_url":"","alt_vi":""}, ... đúng SỐ Ô A→F/A→E ], "example"?: {"label":"<chữ>","content":{"zh":"<câu 例如>","pinyin":"..."}} } — KHÔNG nhìn thấy ảnh nên để image_url RỖNG; chỉ tạo đủ số ô đúng nhãn, hệ thống sẽ tự gán ảnh sau.',
+    '- image_grid: { "image_url":"", "items": [ {"label":"A"}, ... đúng SỐ NHÃN A→F/A→E ], "example"?: {"label":"<chữ>","content":{"zh":"<câu 例如>","pinyin":"..."}} } — KHÔNG nhìn thấy ảnh: để image_url RỖNG (hệ thống tự gán 1 ẢNH GHÉP A–F sau); items CHỈ cần label (A→F) để render đáp án, KHÔNG cần ảnh từng ô.',
     '- passage: { "passage_zh":"<đoạn văn nguyên văn>", "passage_pinyin"?:"", "passage_vi"?:"" }',
     '- passage_multi: { "passage":"<đoạn văn dùng chung nguyên văn>", "passage_pinyin"?:"", "passage_vi"?:"" }',
     'Mỗi câu thuộc cụm dùng chung PHẢI set group_ref = local_id của group tương ứng. Nếu thiếu nội dung bank/đoạn văn trong PDF → để rỗng và push warning, KHÔNG tự nghĩ ra.',
@@ -128,6 +129,49 @@ const HSK4_SECTION_PLANS = [
         ].join('\n'),
     },
 ];
+
+// Suy ra "section plan" (range câu → question_type) cho 1 level từ TEMPLATES —
+// nguồn chuẩn dùng chung với trình tạo đề thủ công. Nhờ vậy MỌI level đều import
+// theo từng section (1 call/section) → hết truncation giữa đề (nguyên nhân HSK1-3
+// rớt câu). Đánh số câu LIÊN TỤC qua các section như đề thật.
+function buildSectionPlans(level) {
+    const tmpl = TEMPLATES[level];
+    if (!tmpl || !Array.isArray(tmpl.sections)) return null;
+    const plans = [];
+    let qNum = 1;
+    tmpl.sections.forEach((sec, sIdx) => {
+        const start = qNum;
+        const guideLines = [];
+        for (const part of sec.parts) {
+            const from = qNum;
+            const to = qNum + part.count - 1;
+            const groupNote = part.group
+                ? ` — tạo 1 group ${part.group.type} (A–F) dùng chung và set group_ref cho mỗi câu`
+                : '';
+            guideLines.push(`Questions ${from}-${to}: ${part.questionType}${groupNote}.`);
+            qNum += part.count;
+        }
+        const end = qNum - 1;
+        plans.push({
+            section_type: sec.section_type,
+            section_order: sIdx + 1,
+            title: sec.title,
+            instructions: sec.instructions,
+            duration_seconds: sec.duration_seconds,
+            range: `${start}-${end}`,
+            expectedCount: end - start + 1,
+            maxOutputTokens: Math.min(MAX_OUTPUT_TOKENS, Math.max(16000, (end - start + 1) * 1000)),
+            guide: guideLines.join('\n'),
+        });
+    });
+    return plans;
+}
+
+// HSK4 giữ guide tinh chỉnh tay (HSK4_SECTION_PLANS); các level khác suy từ TEMPLATES.
+function getSectionPlans(level) {
+    if (level === 4) return HSK4_SECTION_PLANS;
+    return buildSectionPlans(level);
+}
 
 function jsonOrNull(value) {
     if (value === undefined || value === null) return null;
@@ -519,6 +563,11 @@ function buildSectionPrompt({ hskLevel, pdfText, answerText }, plan) {
         '- group_ref trỏ tới groups[].local_id hoặc index nhóm trong cùng section.',
         GROUP_CONTENT_SCHEMA_GUIDE,
         '- correct_answer dùng label A/B/C/D hoặc đáp án mẫu. true_false bắt buộc A=TRUE, B=FALSE.',
+        '- multiple_choice: phải có options A-D (hoặc A-C) + correct_answer là nhãn.',
+        '- sentence_assembly: question_text là các mảnh "词1 / 词2 / 词3"; correct_answer là câu hoàn chỉnh.',
+        '- image_keyword_sentence: nếu ảnh chưa tách được, để question_image rỗng và đặt meta.keyword.',
+        '- fill_hanzi: pinyin gợi ý ở meta.pinyin_hint, câu có chỗ trống ở meta.context_zh_with_blank; correct_answer là chữ Hán còn thiếu.',
+        '- type trong guide chỉ là GỢI Ý theo mẫu đề; nếu nội dung thực tế trong PDF khác, ưu tiên GIỮ ĐÚNG nội dung + đáp án, TUYỆT ĐỐI không để câu trống.',
         '- Không include câu ngoài range được yêu cầu.',
         '',
         '--- PDF TEXT ---',
@@ -612,11 +661,110 @@ async function generateImportJson(prompt, { label, maxOutputTokens }) {
     }
 }
 
-async function structureWithAi(input) {
-    if (input.hskLevel === 4 && process.env.HSK_IMPORT_CHUNKED !== 'false') {
-        return structureHsk4WithAi(input);
+const SPARSE_OK_TYPES = new Set(['image_keyword_sentence', 'short_answer', 'short_essay', 'summary_essay']);
+
+// Câu "shell": có question_number nhưng nội dung TRỐNG (AI trả câu rỗng do
+// truncation/lẫn lộn) — đây chính là lý do "có câu nhưng mất đề + đáp án ABCD".
+function isShellQuestion(q) {
+    if (!q) return true;
+    if (SPARSE_OK_TYPES.has(String(q.question_type || ''))) return false;
+    const has = (v) => v !== undefined && v !== null && String(v).trim() !== '';
+    const opts = Array.isArray(q.options) ? q.options.filter(o => {
+        if (typeof o === 'string') return o.trim() !== '';
+        return o && (has(o.text) || has(o.word) || has(o.value));
+    }) : [];
+    return !has(q.question_text) && !has(q.statement) && !has(q.transcript) && !has(q.passage) && opts.length < 2;
+}
+
+// Số câu THIẾU hoặc SHELL trong [start..end].
+function missingOrShell(questions, start, end) {
+    const byNum = new Map();
+    for (const q of questions) byNum.set(Number(q.question_number), q);
+    const out = [];
+    for (let n = start; n <= end; n += 1) {
+        const q = byNum.get(n);
+        if (!q || isShellQuestion(q)) out.push(n);
+    }
+    return out;
+}
+
+// [56,57,58,99,100] → "56-58, 99-100"
+function compactRanges(nums) {
+    const s = [...new Set(nums)].sort((a, b) => a - b);
+    const out = [];
+    let i = 0;
+    while (i < s.length) {
+        let j = i;
+        while (j + 1 < s.length && s[j + 1] === s[j] + 1) j += 1;
+        out.push(i === j ? `${s[i]}` : `${s[i]}-${s[j]}`);
+        i = j + 1;
+    }
+    return out.join(', ');
+}
+
+function buildMissingQuestionsPrompt({ hskLevel, pdfText, answerText }, plan, missing) {
+    return [
+        'Bạn là bộ import đề thi HSK cho hệ thống HanXue. Trả về CHỈ JSON hợp lệ, không markdown.',
+        '',
+        `Nhiệm vụ: CHỈ parse lại các câu ${missing.join(', ')} thuộc section ${plan.section_type} HSK${hskLevel}.`,
+        'Các câu này lần trước bị THIẾU hoặc nội dung TRỐNG. Đọc kỹ PDF và điền ĐẦY ĐỦ (statement/transcript/question_text/options...).',
+        'QUY TẮC: KHÔNG BỊA — copy nguyên văn từ PDF TEXT. correct_answer lấy từ ANSWER TEXT theo question_number. KHÔNG dịch sang tiếng Việt.',
+        '',
+        plan.guide,
+        '',
+        'Output JSON shape: { "questions": [ { "question_number": N, "question_type": "...", "question_text": "", "statement": "", "transcript": "", "options": [{"label":"A","text":""}], "correct_answer": "", "group_ref": null, "meta": {} } ] }',
+        `- CHỈ trả các câu: ${missing.join(', ')}. KHÔNG trả câu khác.`,
+        `- question_type chỉ được là: ${Array.from(ALLOWED_QUESTION_TYPES).join(', ')}.`,
+        GROUP_CONTENT_SCHEMA_GUIDE,
+        '- true_false bắt buộc A=TRUE, B=FALSE; multiple_choice cần options A-D + correct_answer.',
+        '',
+        '--- PDF TEXT ---',
+        truncateText(pdfText),
+        '',
+        '--- ANSWER TEXT ---',
+        truncateText(answerText),
+    ].join('\n');
+}
+
+// Sau khi parse 1 section: nếu còn câu thiếu/shell → hỏi lại AI RIÊNG các số đó
+// (1 vòng) rồi merge. Còn sót → warning liệt kê đích danh (KHÔNG chặn import).
+async function fillMissingQuestions(input, plan, questions, warnings) {
+    const [start, end] = plan.range.split('-').map(Number);
+    let missing = missingOrShell(questions, start, end);
+    if (!missing.length) return questions;
+
+    warnings.push(`Section ${plan.section_type}: thiếu/trống câu ${compactRanges(missing)} → đang hỏi lại AI.`);
+    try {
+        const prompt = buildMissingQuestionsPrompt(input, plan, missing);
+        const parsed = await generateImportJson(prompt, {
+            label: `HSK${input.hskLevel} ${plan.section_type} re-ask`,
+            maxOutputTokens: Math.min(MAX_OUTPUT_TOKENS, Math.max(8000, missing.length * 1200)),
+        });
+        const refilled = Array.isArray(parsed.questions) ? parsed.questions
+            : (parsed.section && Array.isArray(parsed.section.questions) ? parsed.section.questions : []);
+        const byNum = new Map(questions.map(q => [Number(q.question_number), q]));
+        for (const rq of refilled) {
+            const n = Number(rq.question_number);
+            if (n >= start && n <= end && !isShellQuestion(rq)) byNum.set(n, rq);
+        }
+        questions = Array.from(byNum.values()).sort((a, b) => Number(a.question_number) - Number(b.question_number));
+    } catch (e) {
+        warnings.push(`Hỏi lại câu thiếu (${plan.section_type}) lỗi: ${e.message}`);
     }
 
+    missing = missingOrShell(questions, start, end);
+    if (missing.length) {
+        warnings.push(`Section ${plan.section_type}: VẪN còn thiếu/trống câu ${compactRanges(missing)} — cần bổ sung tay trong editor.`);
+    }
+    return questions;
+}
+
+async function structureWithAi(input) {
+    const chunkingOn = process.env.HSK_IMPORT_CHUNKED !== 'false';
+    const plans = chunkingOn ? getSectionPlans(input.hskLevel) : null;
+    if (plans && plans.length) {
+        return structureSectionedWithAi(input, plans);
+    }
     const prompt = buildPrompt(input);
     return generateImportJson(prompt, {
         label: `HSK${input.hskLevel} import`,
@@ -624,19 +772,26 @@ async function structureWithAi(input) {
     });
 }
 
-async function structureHsk4WithAi(input) {
-    const expected = HSK_EXPECTED[4];
+// Import theo TỪNG SECTION (1 call/section) + gap-validation/re-ask mỗi section.
+// Áp cho MỌI level có section plan (HSK1-6) → hết truncation giữa đề (HSK1-3 rớt câu,
+// HSK4 56-65 mất đề/đáp án).
+async function structureSectionedWithAi(input, plans) {
+    const expected = HSK_EXPECTED[input.hskLevel] || {};
     const sections = [];
-    const warnings = ['HSK4 import dùng chế độ chunked theo section để tránh timeout.'];
+    const warnings = [`HSK${input.hskLevel} import chunked theo section (tránh truncation giữa đề).`];
 
-    for (const plan of HSK4_SECTION_PLANS) {
+    for (const plan of plans) {
         const prompt = buildSectionPrompt(input, plan);
         const parsed = await generateImportJson(prompt, {
-            label: `HSK4 ${plan.section_type}`,
+            label: `HSK${input.hskLevel} ${plan.section_type}`,
             maxOutputTokens: Math.min(MAX_OUTPUT_TOKENS, plan.maxOutputTokens),
         });
         const section = parsed.section || parsed;
         if (Array.isArray(parsed.warnings)) warnings.push(...parsed.warnings.map(String));
+
+        let questions = Array.isArray(section.questions) ? section.questions : [];
+        questions = await fillMissingQuestions(input, plan, questions, warnings);
+
         sections.push({
             section_type: plan.section_type,
             section_order: plan.section_order,
@@ -644,14 +799,14 @@ async function structureHsk4WithAi(input) {
             instructions: section.instructions || plan.instructions,
             duration_seconds: section.duration_seconds || plan.duration_seconds,
             groups: Array.isArray(section.groups) ? section.groups : [],
-            questions: Array.isArray(section.questions) ? section.questions : [],
+            questions,
         });
     }
 
     return {
         exam: {
             title: input.title,
-            hsk_level: 4,
+            hsk_level: input.hskLevel,
             exam_type: input.examType,
             duration_minutes: expected.duration,
             passing_score: expected.passing,
@@ -811,7 +966,8 @@ function validatePayload(payload, input) {
                 errors.push(`question_type không hợp lệ ở câu ${question.question_number}: ${question.question_type}`);
             }
             if (!question.correct_answer && !['short_answer', 'short_essay', 'summary_essay'].includes(question.question_type)) {
-                errors.push(`Câu ${question.question_number} thiếu correct_answer.`);
+                // Cảnh báo (KHÔNG chặn import) — admin điền đáp án sau, tránh fail cả đề.
+                warnings.push(`Câu ${question.question_number} thiếu correct_answer — bổ sung trong editor.`);
             }
             if (question.question_type === 'image_keyword_sentence' && !question.question_image) {
                 warnings.push(`Câu ${question.question_number} là image_keyword_sentence nhưng chưa có ảnh; admin cần upload ảnh sau.`);
@@ -820,13 +976,22 @@ function validatePayload(payload, input) {
     }
 
     if (expected) {
+        // Lệch số câu KHÔNG chặn import (tránh "fail cả đề" khi rớt vài câu) — chỉ
+        // cảnh báo + liệt kê đích danh số câu thiếu để admin bổ sung nhanh.
         if (total !== expected.total) {
-            errors.push(`Sai tổng số câu: nhận ${total}, kỳ vọng HSK${input.hskLevel} là ${expected.total}.`);
+            warnings.push(`Tổng số câu lệch: nhận ${total}, kỳ vọng HSK${input.hskLevel} là ${expected.total}.`);
         }
         for (const [sectionType, count] of Object.entries(expected.sections)) {
             if ((sectionCounts[sectionType] || 0) !== count) {
-                errors.push(`Sai số câu section ${sectionType}: nhận ${sectionCounts[sectionType] || 0}, kỳ vọng ${count}.`);
+                warnings.push(`Số câu section ${sectionType} lệch: nhận ${sectionCounts[sectionType] || 0}, kỳ vọng ${count}.`);
             }
+        }
+        const expectedMissing = [];
+        for (let n = 1; n <= expected.total; n += 1) {
+            if (!seenNumbers.has(n)) expectedMissing.push(n);
+        }
+        if (expectedMissing.length) {
+            warnings.push(`Thiếu câu số: ${compactRanges(expectedMissing)} — bổ sung trong editor.`);
         }
     }
 
@@ -877,9 +1042,11 @@ async function uploadPdfToGcs(file, jobId) {
  * Map Cloud Run-extracted images onto the payload.
  *
  * Hai đích KHÁC NHAU (đây là lý do bản cũ "mất ảnh image_grid"):
- *  1) Lưới ảnh A-F (group_type=image_grid): các ảnh là tài nguyên dùng chung của
- *     GROUP → điền vào group.content.items[].image_url theo thứ tự đọc (page→y→x),
- *     KHÔNG gộp theo question_number (gộp sẽ rớt 5/6 ảnh cùng cụm).
+ *  1) Lưới ảnh A-F (group_type=image_grid): tài nguyên dùng chung của GROUP.
+ *     - Nếu cụm chỉ extract được 1 ảnh → đó là ẢNH GHÉP A–F (chuẩn mới) → đặt vào
+ *       group.content.image_url (admin sửa = 1 ô upload duy nhất).
+ *     - Nếu nhiều ảnh rời → back-compat: điền group.content.items[].image_url theo
+ *       thứ tự đọc (page→y→x), KHÔNG gộp theo question_number.
  *  2) Ảnh riêng 1 câu (image_match…): điền question_image cho đúng số câu.
  *
  * Ảnh đã dùng cho lưới sẽ không tái dùng cho question_image. Chỉ điền khi đang
@@ -933,21 +1100,36 @@ function applyExtractedImages(payload, images, warnings) {
             if (!gridIdx.length) continue;
 
             const content = (group.content && typeof group.content === 'object') ? group.content : {};
-            let items = Array.isArray(content.items) && content.items.length ? content.items : null;
-            // AI quên tạo ô → tự tạo theo đúng số ảnh tìm được.
-            if (!items) {
-                items = gridIdx.map((_, i) => ({ label: String.fromCharCode(65 + i), image_url: '', alt_vi: '' }));
-            }
-            let gi = 0;
-            for (const it of items) {
-                if (!it.image_url && gi < gridIdx.length) {
-                    it.image_url = sorted[gridIdx[gi]].gs;
-                    used.add(gridIdx[gi]);
-                    gi += 1;
+
+            if (gridIdx.length === 1) {
+                // 1 ảnh cho cả cụm = ảnh ghép A–F (chuẩn mới) → content.image_url.
+                if (!content.image_url) {
+                    content.image_url = sorted[gridIdx[0]].gs;
+                    used.add(gridIdx[0]);
                     applied += 1;
                 }
+                // Đảm bảo có nhãn đáp án (A–F) để renderer hiện nút chọn chữ cái.
+                if (!Array.isArray(content.items) || !content.items.length) {
+                    const labelCount = Math.min(6, Math.max(5, refNums.size + 1));
+                    content.items = Array.from({ length: labelCount }, (_, i) => ({ label: String.fromCharCode(65 + i) }));
+                }
+            } else {
+                // Nhiều ảnh rời cho cụm → back-compat: điền items[].image_url (renderer fallback lưới).
+                let items = Array.isArray(content.items) && content.items.length ? content.items : null;
+                if (!items) {
+                    items = gridIdx.map((_, i) => ({ label: String.fromCharCode(65 + i), image_url: '', alt_vi: '' }));
+                }
+                let gi = 0;
+                for (const it of items) {
+                    if (!it.image_url && gi < gridIdx.length) {
+                        it.image_url = sorted[gridIdx[gi]].gs;
+                        used.add(gridIdx[gi]);
+                        gi += 1;
+                        applied += 1;
+                    }
+                }
+                content.items = items;
             }
-            content.items = items;
             group.content = content;
         }
     }

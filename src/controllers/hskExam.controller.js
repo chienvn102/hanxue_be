@@ -11,6 +11,7 @@ const { resolveAudioUrl } = require('../services/audioUrl.service');
 const pushService = require('../services/push.service');
 const db = require('../config/database');
 const hskWritingGrader = require('../services/hskWritingGrader.service');
+const pinyinService = require('../services/pinyin.service');
 
 async function broadcastNewExam(exam) {
     if (!exam || !exam.hsk_level || !exam.id) return;
@@ -221,6 +222,32 @@ async function updateQuestion(req, res) {
     } catch (err) {
         console.error('Update question error:', err);
         res.status(500).json({ success: false, message: 'Failed to update question', error: err.message });
+    }
+}
+
+/**
+ * POST /api/admin/hsk-questions/gen-pinyin
+ * Body: { hsk_level, question_text?, options?: string[] }
+ * Sinh pinyin CÓ DẤU THANH bằng pinyin-pro (deterministic, không gọi AI) —
+ * CHỈ áp dụng HSK1/2 (từ đơn giản, độ chính xác cao). Trả pinyin cho ô cần điền.
+ */
+async function genQuestionPinyin(req, res) {
+    try {
+        const level = Number(req.body?.hsk_level);
+        if (![1, 2].includes(level)) {
+            return res.status(400).json({ success: false, message: 'Tạo pinyin chỉ áp dụng cho HSK1 và HSK2.' });
+        }
+        const toPinyin = (s) => pinyinService.convert(String(s || '')).join(' ').trim();
+        const questionText = req.body?.question_text;
+        const options = Array.isArray(req.body?.options) ? req.body.options : [];
+        return res.json({
+            success: true,
+            question_text_pinyin: questionText ? toPinyin(questionText) : '',
+            options_pinyin: options.map(toPinyin),
+        });
+    } catch (err) {
+        console.error('Gen question pinyin error:', err.message);
+        return res.status(500).json({ success: false, message: 'Lỗi tạo pinyin.' });
     }
 }
 
@@ -670,6 +697,7 @@ module.exports = {
     getQuestions,
     createQuestion,
     updateQuestion,
+    genQuestionPinyin,
     deleteQuestion,
     // Admin — Question Groups
     listGroups,

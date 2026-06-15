@@ -6,6 +6,7 @@ const audioGenController = require('../controllers/audioGen.controller');
 const adminUserController = require('../controllers/adminUser.controller');
 const grammarQuizAdminController = require('../controllers/grammarQuizAdmin.controller');
 const lessonController = require('../controllers/lesson.controller');
+const hskExamController = require('../controllers/hskExam.controller');
 
 // Public admin routes
 router.post('/login', adminAuthController.login);
@@ -22,6 +23,8 @@ router.post('/gen-audio-text', adminMiddleware, audioGenController.genTextAudio)
 router.post('/vocab/:id/gen-audio-edge', adminMiddleware, audioGenController.genVocabAudioEdge);
 router.post('/gen-audio-text-edge', adminMiddleware, audioGenController.genTextAudioEdge);
 router.post('/hsk-questions/:id/gen-audio', adminMiddleware, audioGenController.genHskQuestionAudio);
+// Tạo pinyin (pinyin-pro, deterministic) cho câu hỏi — chỉ HSK1/2
+router.post('/hsk-questions/gen-pinyin', adminMiddleware, hskExamController.genQuestionPinyin);
 router.post('/lessons/:id/gen-audio', adminMiddleware, audioGenController.genLessonAudio);
 // AI tạo pinyin + bản dịch tiếng Việt từ passage_zh (Groq, JSON mode)
 router.post('/lessons/passage-assist', adminMiddleware, lessonController.passageAssist);
