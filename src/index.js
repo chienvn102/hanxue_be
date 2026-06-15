@@ -78,6 +78,7 @@ app.use('/api/achievements', require('./routes/achievements'));
 app.use('/api/realtime', require('./routes/realtime'));
 app.use('/api/pronunciation', require('./routes/pronunciation'));
 app.use('/api/writing', require('./routes/writingPractice'));
+app.use('/api/media', require('./routes/media'));
 app.use('/api', require('./routes/lessonFeedback'));
 
 // 404 handler
