@@ -119,9 +119,33 @@ const SPEAKER_PATTERNS = [
 const FEMALE_HINTS = new Set(['女', '妈妈', '姐姐', '妹妹', '阿姨', '奶奶', '外婆']);
 const MALE_HINTS = new Set(['男', '爸爸', '哥哥', '弟弟', '叔叔', '爷爷', '外公']);
 
+// Nhãn KHÔNG phải người nói (tránh nhận nhầm "注意：…", "例如：…").
+const NON_SPEAKER_LABELS = new Set([
+    '注意', '例如', '问题', '答案', '提示', '翻译', '解释', '语法', '生词',
+    '课文', '对话', '注', '例', '题', '注释', '说明', '练习', '作业', '例句',
+]);
+// Đuôi là động từ "nói/hỏi…" → là tường thuật, không phải nhãn người nói
+// (vd "他对我说：", "妈妈问：").
+const SPEECH_VERB_TAIL = /[说說问問讲講道答喊叫嚷想]$/u;
+// Tên người nói chung: 1–4 ký tự Hán/Latin, không phải nhãn/động từ nói.
+const NAME_LIKE_RE = /^[A-Za-z一-鿿]{1,4}$/u;
+
 function isSpeaker(prefix) {
     if (FIXED_SPEAKERS.has(prefix)) return true;
     return SPEAKER_PATTERNS.some(p => p.test(prefix));
+}
+
+/** Nhãn tên người nói chung (张明：, 李红：, A：) — không trong whitelist. */
+function isNameLikeSpeaker(prefix) {
+    if (NON_SPEAKER_LABELS.has(prefix)) return false;
+    if (!NAME_LIKE_RE.test(prefix)) return false;
+    if (SPEECH_VERB_TAIL.test(prefix)) return false;
+    return true;
+}
+
+/** Là người nói hợp lệ (whitelist có giọng HOẶC tên người chung). */
+function isAnySpeaker(prefix) {
+    return isSpeaker(prefix) || isNameLikeSpeaker(prefix);
 }
 
 /** 'male' | 'female' | 'alt' (người nói rõ tên nhưng không rõ giới) | 'default'. */
@@ -132,7 +156,7 @@ function voiceHint(speaker) {
     if (MALE_HINTS.has(speaker)) return 'male';
     if (/(女士|小姐|阿姨|护士)$/u.test(speaker)) return 'female';
     if (/(先生|叔叔)$/u.test(speaker)) return 'male';
-    if (isSpeaker(speaker)) return 'alt';
+    if (isSpeaker(speaker) || isNameLikeSpeaker(speaker)) return 'alt';
     return 'default';
 }
 
@@ -143,7 +167,7 @@ const INLINE_SPEAKER_RE = /(?:^|(?<=[。？！?!；;\s,，]))([^：:、，。！
 /** Tách 1 dòng nhiều người nói: '男：你好。女：你好。' → [{男,...},{女,...}]. */
 function splitInlineSpeakers(line) {
     const matches = [...line.matchAll(INLINE_SPEAKER_RE)];
-    const valid = matches.filter(m => isSpeaker(m[1]));
+    const valid = matches.filter(m => isAnySpeaker(m[1]));
     if (!valid.length) return [{ speaker: null, text: line.trim() }];
 
     const segs = [];
