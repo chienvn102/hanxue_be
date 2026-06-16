@@ -12,6 +12,7 @@ const gcs = require('./gcs.service');
 const gemini = require('./gemini.service');
 const pdfImageExtract = require('./pdfImageExtract.client');
 const { TEMPLATES } = require('./hsk-exam-template.service'); // nguồn chuẩn cấu trúc đề (range→type)
+const hskV2 = require('./hsk-v2.service'); // OCR v2: blueprint cố định + AI điền nội dung
 
 const IMPORT_MODEL = process.env.HSK_IMPORT_MODEL || 'gemini-2.5-flash';
 const IMPORT_LOCATION = process.env.HSK_IMPORT_LOCATION || 'global';
@@ -1373,8 +1374,213 @@ async function processJob(jobId, files, input) {
     }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * OCR v2 — blueprint-driven (HSK1-3): cấu trúc CỐ ĐỊNH từ blueprint, AI CHỈ điền
+ * nội dung từ PDF + đáp án. Tách khỏi OCR v1 (structureWithAi). Ra đề format_version=2.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+// Mỗi loại câu cần AI điền field gì (hướng dẫn ngắn cho prompt).
+const V2_QUESTION_FIELDS = {
+    true_false: 'statement (câu nhận định ngắn), transcript (lời thoại nghe nếu có), correct_answer (A=Đúng, B=Sai)',
+    multiple_choice: 'question_text hoặc transcript (đoạn nghe), options [{label,text,pinyin}] ĐÚNG số đáp án, correct_answer (nhãn)',
+    image_match: 'transcript (lời nghe), correct_answer (nhãn ảnh đúng). KHÔNG cần ảnh.',
+    image_grid_match: 'transcript hoặc question_text (câu/đối thoại), correct_answer (chữ cái trong lưới). KHÔNG cần ảnh.',
+    reply_match: 'question_text (câu hỏi/lời nói), correct_answer (chữ cái câu trả lời)',
+    word_bank_fill: 'question_text (câu có chỗ trống), correct_answer (chữ cái từ trong bank)',
+    sentence_assembly: 'question_text (các mảnh "词1 / 词2 / 词3"), correct_answer (câu hoàn chỉnh)',
+    fill_hanzi: 'question_text (pinyin gợi ý), correct_answer (chữ Hán), meta.context (câu chứa chữ)',
+};
+
+// Blueprint chỉ-giữ-cấu-trúc (xóa nội dung mẫu) để AI điền nội dung thật.
+function buildV2StructureOnly(bp) {
+    return {
+        level: bp.level,
+        exam_code: bp.exam_code,
+        total_questions: bp.total_questions,
+        duration_minutes: bp.duration_minutes,
+        passing_score: bp.passing_score,
+        audio_file: bp.audio_file,
+        sections: bp.sections.map(s => ({
+            section_type: s.section_type,
+            title_vi: s.title_vi,
+            instructions_vi: s.instructions_vi,
+            parts: s.parts.map(p => ({
+                range: p.range,
+                question_type: p.question_type,
+                options_count: p.options_count,
+                option_style: p.option_style,
+                image_style: p.image_style,
+                group: p.group ? { type: p.group.type, items: p.group.items, labels: p.group.labels, content: {} } : null,
+                questions: p.questions.map(q => ({ number: q.number })),
+            })),
+        })),
+    };
+}
+
+function buildV2ContentPrompt(level, section, pdfText, answerText) {
+    const partLines = section.parts.map(p => {
+        const last = String.fromCharCode(64 + (p.options_count || (p.group ? p.group.items : 3)));
+        const grp = p.group ? ` + group ${p.group.type} (${p.group.items} ô A-${String.fromCharCode(64 + p.group.items)})` : '';
+        return `- Câu ${p.range[0]}-${p.range[1]}: ${p.question_type}, ${p.options_count} đáp án (A-${last})${grp}. Điền: ${V2_QUESTION_FIELDS[p.question_type] || 'question_text, correct_answer'}.`;
+    }).join('\n');
+
+    return [
+        `Bạn là bộ ĐIỀN NỘI DUNG đề thi HSK${level} cho HanXue. Cấu trúc đề ĐÃ CỐ ĐỊNH — bạn CHỈ điền nội dung từ PDF + đáp án.`,
+        'QUY TẮC: KHÔNG đổi loại câu/số đáp án/cấu trúc. Copy nguyên văn tiếng Trung từ PDF. correct_answer lấy từ ANSWER TEXT theo SỐ CÂU. KHÔNG dịch sang tiếng Việt. Thiếu thì để rỗng, KHÔNG bịa.',
+        '',
+        `Section: ${section.section_type}. Các cụm câu cần điền:`,
+        partLines,
+        '',
+        'Trả về CHỈ JSON:',
+        '{ "questions": { "<số câu>": { "statement"?, "question_text"?, "transcript"?, "passage"?, "options"?: [{"label":"A","text":"","pinyin":""}], "correct_answer": "" } }, "groups": { "<range vd 11-15>": { ...nội dung dùng chung... } } }',
+        'Nội dung group theo type:',
+        '- image_grid: {} (ảnh để hệ thống tự gán).',
+        '- word_bank: { "items": [ {"label":"A","word":"<từ>","pinyin":"<nếu có>"}, ... ] }',
+        '- reply_bank: { "items": [ {"label":"A","sentence_zh":"<câu>","pinyin":"<nếu có>"}, ... ] }',
+        '- passage / passage_multi: { "passage_zh": "<đoạn văn>" }',
+        '',
+        '--- PDF TEXT ---',
+        truncateText(pdfText),
+        '',
+        '--- ANSWER TEXT ---',
+        truncateText(answerText),
+    ].join('\n');
+}
+
+function mergeV2Content(section, ai, warnings) {
+    const qmap = (ai && ai.questions) || {};
+    const gmap = (ai && ai.groups) || {};
+    for (const part of section.parts) {
+        if (part.group) {
+            const key = `${part.range[0]}-${part.range[1]}`;
+            const gc = gmap[key] || gmap[String(part.range[0])] || null;
+            if (gc && typeof gc === 'object') part.group.content = gc;
+        }
+        for (const q of part.questions) {
+            const c = qmap[String(q.number)] || qmap[q.number];
+            if (!c || typeof c !== 'object') {
+                warnings.push(`Câu ${q.number}: AI chưa điền nội dung — bổ sung tay.`);
+                continue;
+            }
+            if (c.statement) q.statement = String(c.statement);
+            if (c.question_text) q.question_text = String(c.question_text);
+            if (c.transcript) q.transcript = String(c.transcript);
+            if (c.passage) q.passage = String(c.passage);
+            if (Array.isArray(c.options)) q.options = c.options;
+            if (c.correct_answer) q.correct_answer = normalizeCorrectAnswer(c.correct_answer, part.question_type);
+            if (c.pinyin) q.pinyin = String(c.pinyin);
+            if (c.meta && typeof c.meta === 'object') q.meta = c.meta;
+        }
+    }
+}
+
+// Best-effort ảnh: per_question → question_image; group_grid → 1 ảnh đại diện; image_match → admin tự upload.
+function applyV2Images(filled, images, warnings) {
+    const sorted = (images || [])
+        .filter(im => im && im.gs_url && Number.isFinite(Number(im.question_number)))
+        .map(im => {
+            const b = Array.isArray(im.bbox) ? im.bbox : [0, 0, 0, 0];
+            return { n: Number(im.question_number), gs: String(im.gs_url), page: Number(im.page) || 0, y: Number(b[1]) || 0, x: Number(b[0]) || 0 };
+        })
+        .sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
+    const byNum = new Map();
+    for (const im of sorted) if (!byNum.has(im.n)) byNum.set(im.n, im.gs);
+
+    let applied = 0;
+    for (const s of filled.sections) {
+        for (const p of s.parts) {
+            if (p.image_style === 'per_question') {
+                for (const q of p.questions) if (byNum.has(q.number)) { q.question_image = byNum.get(q.number); applied += 1; }
+            } else if (p.image_style === 'group_grid' && p.group) {
+                for (let n = p.range[0]; n <= p.range[1]; n += 1) {
+                    if (byNum.has(n)) { p.group.content = { ...(p.group.content || {}), image_url: byNum.get(n) }; applied += 1; break; }
+                }
+            } else if (p.image_style === 'option_images') {
+                warnings.push(`Câu ${p.range[0]}-${p.range[1]} (image_match): ảnh đáp án cần upload tay trong editor.`);
+            }
+        }
+    }
+    return applied;
+}
+
+/**
+ * OCR v2 cho HSK1-3: dựng đề format_version=2 từ blueprint, AI điền nội dung.
+ */
+async function processJobV2(jobId, files, input) {
+    const warnings = [`OCR v2 (HSK${input.hskLevel}) — cấu trúc khóa theo blueprint, AI chỉ điền nội dung.`];
+    try {
+        await updateJob(jobId, { status: 'processing', progress: 10 });
+
+        const struct = hskV2.loadBlueprint(input.hskLevel);
+        if (!struct) throw new Error(`OCR v2 chỉ hỗ trợ HSK 1-3 (level=${input.hskLevel}).`);
+
+        const pdfText = await extractPdfText(files.examPdf, warnings);
+        if (!pdfText.trim()) throw new Error('Không extract được nội dung đề PDF.');
+        await updateJob(jobId, { progress: 30, raw_text: truncateText(pdfText) });
+
+        const answerText = await extractAnswerText(files.answerFile, warnings);
+        if (!answerText.trim()) throw new Error('Không extract được nội dung file đáp án.');
+        await updateJob(jobId, { progress: 42, warnings });
+
+        const filled = buildV2StructureOnly(struct);
+        let prog = 42;
+        const step = Math.floor(36 / filled.sections.length);
+        for (const section of filled.sections) {
+            const prompt = buildV2ContentPrompt(input.hskLevel, section, pdfText, answerText);
+            const ai = await generateImportJson(prompt, {
+                label: `HSK${input.hskLevel} v2 ${section.section_type}`,
+                maxOutputTokens: Math.min(MAX_OUTPUT_TOKENS, 40000),
+            });
+            mergeV2Content(section, ai, warnings);
+            prog += step;
+            await updateJob(jobId, { progress: prog });
+        }
+
+        // Ảnh best-effort qua Cloud Run.
+        if (pdfImageExtract.isConfigured()) {
+            try {
+                const pdfGs = await uploadPdfToGcs(files.examPdf, jobId);
+                if (pdfGs) {
+                    const { images, warnings: imgWarn } = await pdfImageExtract.extractImages({ pdfGs, jobId, level: input.hskLevel });
+                    const applied = applyV2Images(filled, images, warnings);
+                    warnings.push(...imgWarn, `Tách ảnh PDF: gán ${applied} ảnh (per-câu + 1 ảnh/lưới).`);
+                }
+            } catch (e) {
+                warnings.push(`Tách ảnh PDF lỗi (bỏ qua): ${e.publicMessage || e.message}`);
+            }
+        } else {
+            warnings.push('Tách ảnh PDF CHƯA BẬT (PDF_EXTRACT_URL) — ảnh để trống, upload tay.');
+        }
+
+        const audioUrl = await uploadAudio(files.audioFile, jobId);
+        if (input.examType === 'exam' && !audioUrl) throw new Error('Chế độ thi cần audio cho cả đề.');
+        await updateJob(jobId, { progress: 85, structured_json: JSON.stringify(filled), warnings });
+
+        const summary = await hskV2.instantiateBlueprint(filled, {
+            seed: true,
+            title: input.title,
+            examType: input.examType,
+            audioUrl,
+        });
+        await updateJob(jobId, {
+            status: 'completed',
+            progress: 100,
+            exam_id: summary.examId,
+            summary,
+            warnings,
+            completed_at: new Date(),
+        });
+    } catch (error) {
+        const errorList = [error.message];
+        if (error.aiResponsePreview) errorList.push(`AI preview: ${error.aiResponsePreview}`);
+        await updateJob(jobId, { status: 'failed', errors: errorList, completed_at: new Date() }).catch(() => {});
+        console.error('[hskImportV2] job failed:', jobId, error);
+    }
+}
+
 module.exports = {
     createJob,
     getJob,
     processJob,
+    processJobV2,
 };

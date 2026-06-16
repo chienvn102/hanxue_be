@@ -1,0 +1,619 @@
+{
+  "level": 1,
+  "exam_code": "H10901",
+  "total_questions": 40,
+  "duration_minutes": 35,
+  "passing_score": 120,
+  "audio_file": "H10901.mp3",
+  "sections": [
+    {
+      "section_type": "listening",
+      "title_zh": "听力",
+      "title_vi": "Nghe hiểu",
+      "instructions_vi": "Nghe và chọn đáp án. Mỗi câu nghe 2 lần.",
+      "parts": [
+        {
+          "range": [
+            1,
+            5
+          ],
+          "question_type": "true_false",
+          "options_count": 2,
+          "option_style": "true_false",
+          "image_style": "per_question",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第一部分：判断对错",
+          "notes": "",
+          "questions": [
+            {
+              "number": 1,
+              "correct_answer": "A",
+              "transcript": "打电话",
+              "pinyin": "Dǎ diànhuà",
+              "translation_vi": "Gọi điện thoại",
+              "image_desc": "người đàn ông đang nghe điện thoại"
+            },
+            {
+              "number": 2,
+              "correct_answer": "B",
+              "transcript": "我和儿子",
+              "pinyin": "Wǒ hé érzi",
+              "translation_vi": "Tôi và con trai",
+              "image_desc": "người mẹ và con gái"
+            },
+            {
+              "number": 3,
+              "correct_answer": "B",
+              "transcript": "开车",
+              "pinyin": "Kāichē",
+              "translation_vi": "Lái xe (ô tô)",
+              "image_desc": "người phụ nữ đang đạp xe đạp"
+            },
+            {
+              "number": 4,
+              "correct_answer": "B",
+              "transcript": "吃米饭",
+              "pinyin": "Chī mǐfàn",
+              "translation_vi": "Ăn cơm",
+              "image_desc": "người phụ nữ đang uống sữa"
+            },
+            {
+              "number": 5,
+              "correct_answer": "A",
+              "transcript": "下雨了",
+              "pinyin": "Xià yǔ le",
+              "translation_vi": "Trời mưa rồi",
+              "image_desc": "mọi người che ô"
+            }
+          ]
+        },
+        {
+          "range": [
+            6,
+            10
+          ],
+          "question_type": "image_match",
+          "options_count": 3,
+          "option_style": "image",
+          "image_style": "option_images",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第二部分：看图选择",
+          "notes": "Đề thật chỉ 3 ảnh đáp án A/B/C (không phải 4).",
+          "questions": [
+            {
+              "number": 6,
+              "correct_answer": "A",
+              "transcript": "今天天气很冷。",
+              "pinyin": "Jīntiān tiānqì hěn lěng.",
+              "translation_vi": "Hôm nay thời tiết rất lạnh.",
+              "image_desc": "A: cô gái mặc áo khoác dày"
+            },
+            {
+              "number": 7,
+              "correct_answer": "A",
+              "transcript": "现在是十点十分。",
+              "pinyin": "Xiànzài shì shí diǎn shí fēn.",
+              "translation_vi": "Bây giờ là 10 giờ 10 phút.",
+              "image_desc": "A: đồng hồ chỉ 10:10"
+            },
+            {
+              "number": 8,
+              "correct_answer": "C",
+              "transcript": "她后面有几个人。",
+              "pinyin": "Tā hòumiàn yǒu jǐ ge rén.",
+              "translation_vi": "Phía sau cô ấy có mấy người.",
+              "image_desc": "C: phía sau người phụ nữ có vài người"
+            },
+            {
+              "number": 9,
+              "correct_answer": "A",
+              "transcript": "我今年 12 岁了。",
+              "pinyin": "Wǒ jīnnián shí'èr suì le.",
+              "translation_vi": "Năm nay tôi 12 tuổi rồi.",
+              "image_desc": "A: cậu bé (12 tuổi)"
+            },
+            {
+              "number": 10,
+              "correct_answer": "C",
+              "transcript": "他下个月去中国。",
+              "pinyin": "Tā xià ge yuè qù Zhōngguó.",
+              "translation_vi": "Tháng sau anh ấy đi Trung Quốc.",
+              "image_desc": "C: Vạn Lý Trường Thành"
+            }
+          ]
+        },
+        {
+          "range": [
+            11,
+            15
+          ],
+          "question_type": "image_grid_match",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "group_grid",
+          "group": {
+            "type": "image_grid",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "image_desc": "Lưới ảnh A–F dùng chung cho câu 11–15 (mèo trên ghế, ví, cửa 102, sách, tạm biệt...)"
+            }
+          },
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第三部分：看图，听对话，选择",
+          "notes": "",
+          "questions": [
+            {
+              "number": 11,
+              "correct_answer": "D",
+              "transcript": "男：你看见我的小猫了吗？\n女：在那儿，在椅子上。",
+              "pinyin": "Nán: Nǐ kànjiàn wǒ de xiǎo māo le ma?\nNǚ: Zài nàr, zài yǐzi shàng.",
+              "translation_vi": "Nam: Em có thấy con mèo nhỏ của anh không?\nNữ: Ở kia kìa, trên ghế."
+            },
+            {
+              "number": 12,
+              "correct_answer": "B",
+              "transcript": "女：我们中午去买，好吗？\n男：你看，我没钱了。",
+              "pinyin": "Nǚ: Wǒmen zhōngwǔ qù mǎi, hǎo ma?\nNán: Nǐ kàn, wǒ méi qián le.",
+              "translation_vi": "Nữ: Trưa mình đi mua nhé?\nNam: Anh hết tiền rồi."
+            },
+            {
+              "number": 13,
+              "correct_answer": "A",
+              "transcript": "男：你住在哪儿？\n女：我和妈妈都住在一零二。",
+              "pinyin": "Nán: Nǐ zhù zài nǎr?\nNǚ: Wǒ hé māma dōu zhù zài yī líng èr.",
+              "translation_vi": "Nam: Bạn sống ở đâu?\nNữ: Tôi và mẹ đều sống ở phòng 102."
+            },
+            {
+              "number": 14,
+              "correct_answer": "E",
+              "transcript": "女：这个汉字怎么读？\n男：对不起，我不会。",
+              "pinyin": "Nǚ: Zhège Hànzì zěnme dú?\nNán: Duìbuqǐ, wǒ bú huì.",
+              "translation_vi": "Nữ: Chữ Hán này đọc thế nào?\nNam: Xin lỗi, tôi không biết."
+            },
+            {
+              "number": 15,
+              "correct_answer": "F",
+              "transcript": "男：谢谢你们！\n女：不客气。再见。",
+              "pinyin": "Nán: Xièxie nǐmen!\nNǚ: Bú kèqi. Zàijiàn.",
+              "translation_vi": "Nam: Cảm ơn mọi người!\nNữ: Không có gì. Tạm biệt."
+            }
+          ]
+        },
+        {
+          "range": [
+            16,
+            20
+          ],
+          "question_type": "multiple_choice",
+          "options_count": 3,
+          "option_style": "text_pinyin",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第四部分：听对话，选择答案",
+          "notes": "Mỗi câu 3 đáp án A/B/C có pinyin trên đề in.",
+          "questions": [
+            {
+              "number": 16,
+              "correct_answer": "B",
+              "transcript": "我的电脑在他的桌子上。\n问：那是谁的电脑？",
+              "pinyin": "Wǒ de diànnǎo zài tā de zhuōzi shàng.\nWèn: Nà shì shéi de diànnǎo?",
+              "translation_vi": "Máy tính của tôi ở trên bàn anh ấy. Hỏi: Đó là máy tính của ai?"
+            },
+            {
+              "number": 17,
+              "correct_answer": "B",
+              "transcript": "今天星期四，我们明天去看电影。\n问：我们什么时候去看电影？",
+              "pinyin": "Jīntiān xīngqīsì, wǒmen míngtiān qù kàn diànyǐng.\nWèn: Wǒmen shénme shíhou qù kàn diànyǐng?",
+              "translation_vi": "Hôm nay thứ Năm, ngày mai đi xem phim. Hỏi: Khi nào đi xem phim?"
+            },
+            {
+              "number": 18,
+              "correct_answer": "C",
+              "transcript": "他是老师，他有 50 个学生。\n问：他有多少个学生？",
+              "pinyin": "Tā shì lǎoshī, tā yǒu wǔshí ge xuéshēng.\nWèn: Tā yǒu duōshao ge xuéshēng?",
+              "translation_vi": "Anh ấy là giáo viên, có 50 học sinh."
+            },
+            {
+              "number": 19,
+              "correct_answer": "C",
+              "transcript": "小姐，你好，你这儿有杯子吗？\n问：他想买什么？",
+              "pinyin": "Xiǎojiě, nǐ hǎo, nǐ zhèr yǒu bēizi ma?\nWèn: Tā xiǎng mǎi shénme?",
+              "translation_vi": "Chào cô, ở đây có cốc không? Hỏi: Anh ấy muốn mua gì?"
+            },
+            {
+              "number": 20,
+              "correct_answer": "B",
+              "transcript": "这是你的朋友吗？很漂亮。\n问：朋友怎么样？",
+              "pinyin": "Zhè shì nǐ de péngyou ma? Hěn piàoliang.\nWèn: Péngyou zěnmeyàng?",
+              "translation_vi": "Đây là bạn của cậu à? Xinh đẹp quá."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section_type": "reading",
+      "title_zh": "阅读",
+      "title_vi": "Đọc hiểu",
+      "instructions_vi": "Đọc và chọn đáp án đúng.",
+      "parts": [
+        {
+          "range": [
+            21,
+            25
+          ],
+          "question_type": "true_false",
+          "options_count": 2,
+          "option_style": "true_false",
+          "image_style": "per_question",
+          "group": null,
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": false
+          },
+          "instruction_zh": "第一部分：词语与图片判断",
+          "notes": "",
+          "questions": [
+            {
+              "number": 21,
+              "correct_answer": "A",
+              "statement": "写",
+              "pinyin": "xiě",
+              "translation_vi": "viết",
+              "image_desc": "cậu bé đang viết bài"
+            },
+            {
+              "number": 22,
+              "correct_answer": "A",
+              "statement": "听",
+              "pinyin": "tīng",
+              "translation_vi": "nghe",
+              "image_desc": "cô gái đeo tai nghe"
+            },
+            {
+              "number": 23,
+              "correct_answer": "B",
+              "statement": "菜",
+              "pinyin": "cài",
+              "translation_vi": "món ăn/rau",
+              "image_desc": "bát canh/đồ uống"
+            },
+            {
+              "number": 24,
+              "correct_answer": "B",
+              "statement": "他",
+              "pinyin": "tā",
+              "translation_vi": "anh ấy (giống đực)",
+              "image_desc": "người phụ nữ"
+            },
+            {
+              "number": 25,
+              "correct_answer": "A",
+              "statement": "狗",
+              "pinyin": "gǒu",
+              "translation_vi": "con chó",
+              "image_desc": "một con chó"
+            }
+          ]
+        },
+        {
+          "range": [
+            26,
+            30
+          ],
+          "question_type": "image_grid_match",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "group_grid",
+          "group": {
+            "type": "image_grid",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "image_desc": "Lưới ảnh A–F dùng chung cho câu 26–30 (mở hộp quà, mua quần áo, hoa quả, giường...)"
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": false
+          },
+          "instruction_zh": "第二部分：句子与图片匹配",
+          "notes": "",
+          "questions": [
+            {
+              "number": 26,
+              "correct_answer": "D",
+              "question_text": "你好，我能吃一块儿吗？",
+              "pinyin": "Nǐ hǎo, wǒ néng chī yí kuàir ma?",
+              "translation_vi": "Xin chào, tôi ăn một miếng được không?"
+            },
+            {
+              "number": 27,
+              "correct_answer": "F",
+              "question_text": "她们在买衣服呢。",
+              "pinyin": "Tāmen zài mǎi yīfu ne.",
+              "translation_vi": "Họ đang mua quần áo."
+            },
+            {
+              "number": 28,
+              "correct_answer": "C",
+              "question_text": "天气太热了，多吃些水果。",
+              "pinyin": "Tiānqì tài rè le, duō chī xiē shuǐguǒ.",
+              "translation_vi": "Trời nóng quá, ăn nhiều hoa quả."
+            },
+            {
+              "number": 29,
+              "correct_answer": "A",
+              "question_text": "来，我们看看里面是什么东西。",
+              "pinyin": "Lái, wǒmen kànkan lǐmiàn shì shénme dōngxi.",
+              "translation_vi": "Mình xem bên trong là cái gì."
+            },
+            {
+              "number": 30,
+              "correct_answer": "B",
+              "question_text": "喂，你睡觉了吗？",
+              "pinyin": "Wéi, nǐ shuìjiào le ma?",
+              "translation_vi": "A lô, cậu ngủ chưa?"
+            }
+          ]
+        },
+        {
+          "range": [
+            31,
+            35
+          ],
+          "question_type": "reply_match",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "reply_bank",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "sentence_zh": "医院",
+                  "pinyin": "Yīyuàn",
+                  "translation_vi": "bệnh viện"
+                },
+                {
+                  "label": "B",
+                  "sentence_zh": "下雨了",
+                  "pinyin": "Xià yǔ le",
+                  "translation_vi": "trời mưa rồi"
+                },
+                {
+                  "label": "C",
+                  "sentence_zh": "我不认识她",
+                  "pinyin": "Wǒ bú rènshi tā",
+                  "translation_vi": "tôi không quen cô ấy"
+                },
+                {
+                  "label": "D",
+                  "sentence_zh": "7 岁",
+                  "pinyin": "qī suì",
+                  "translation_vi": "7 tuổi"
+                },
+                {
+                  "label": "E",
+                  "sentence_zh": "下个月",
+                  "pinyin": "Xià ge yuè",
+                  "translation_vi": "tháng sau"
+                },
+                {
+                  "label": "F",
+                  "sentence_zh": "好的，谢谢！",
+                  "pinyin": "Hǎo de, xièxie!",
+                  "translation_vi": "Được, cảm ơn!"
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第三部分：问答匹配",
+          "notes": "",
+          "questions": [
+            {
+              "number": 31,
+              "correct_answer": "C",
+              "question_text": "那个人是谁？",
+              "pinyin": "Nàge rén shì shéi?",
+              "translation_vi": "Người đó là ai?"
+            },
+            {
+              "number": 32,
+              "correct_answer": "D",
+              "question_text": "他女儿多大了？",
+              "pinyin": "Tā nǚ'ér duō dà le?",
+              "translation_vi": "Con gái anh ấy mấy tuổi?"
+            },
+            {
+              "number": 33,
+              "correct_answer": "A",
+              "question_text": "你的同学在哪儿工作？",
+              "pinyin": "Nǐ de tóngxué zài nǎr gōngzuò?",
+              "translation_vi": "Bạn học làm việc ở đâu?"
+            },
+            {
+              "number": 34,
+              "correct_answer": "B",
+              "question_text": "昨天上午天气怎么样？",
+              "pinyin": "Zuótiān shàngwǔ tiānqì zěnmeyàng?",
+              "translation_vi": "Sáng qua thời tiết thế nào?"
+            },
+            {
+              "number": 35,
+              "correct_answer": "E",
+              "question_text": "爸爸什么时候来北京呢？",
+              "pinyin": "Bàba shénme shíhou lái Běijīng ne?",
+              "translation_vi": "Khi nào bố đến Bắc Kinh?"
+            }
+          ]
+        },
+        {
+          "range": [
+            36,
+            40
+          ],
+          "question_type": "word_bank_fill",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "word_bank",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "word": "坐",
+                  "pinyin": "zuò",
+                  "translation_vi": "ngồi"
+                },
+                {
+                  "label": "B",
+                  "word": "前面",
+                  "pinyin": "qiánmiàn",
+                  "translation_vi": "phía trước"
+                },
+                {
+                  "label": "C",
+                  "word": "没关系",
+                  "pinyin": "méi guānxi",
+                  "translation_vi": "không sao"
+                },
+                {
+                  "label": "D",
+                  "word": "名字",
+                  "pinyin": "míngzi",
+                  "translation_vi": "tên"
+                },
+                {
+                  "label": "E",
+                  "word": "汉语",
+                  "pinyin": "Hànyǔ",
+                  "translation_vi": "tiếng Hán"
+                },
+                {
+                  "label": "F",
+                  "word": "月",
+                  "pinyin": "yuè",
+                  "translation_vi": "tháng"
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第四部分：选词填空",
+          "notes": "",
+          "questions": [
+            {
+              "number": 36,
+              "correct_answer": "F",
+              "question_text": "昨天是 8（月）19 日。",
+              "pinyin": "Zuótiān shì bā yuè shíjiǔ rì.",
+              "translation_vi": "Hôm qua là ngày 19 tháng 8."
+            },
+            {
+              "number": 37,
+              "correct_answer": "B",
+              "question_text": "那个饭馆儿在火车站（前面）。",
+              "pinyin": "Nàge fànguǎnr zài huǒchēzhàn qiánmiàn.",
+              "translation_vi": "Quán ăn ở phía trước ga tàu."
+            },
+            {
+              "number": 38,
+              "correct_answer": "E",
+              "question_text": "你会说（汉语）吗？",
+              "pinyin": "Nǐ huì shuō Hànyǔ ma?",
+              "translation_vi": "Bạn biết nói tiếng Hán không?"
+            },
+            {
+              "number": 39,
+              "correct_answer": "A",
+              "question_text": "男：你好！王先生在吗？\n女：在，请（坐），我去叫他。",
+              "pinyin": "Nán: Nǐ hǎo! Wáng xiānsheng zài ma?\nNǚ: Zài, qǐng zuò, wǒ qù jiào tā.",
+              "translation_vi": "Nam: Ông Vương có ở đây không?\nNữ: Có, mời ngồi."
+            },
+            {
+              "number": 40,
+              "correct_answer": "C",
+              "question_text": "女：对不起，我不会做饭。\n男：（没关系），我会。",
+              "pinyin": "Nǚ: Duìbuqǐ, wǒ bú huì zuò fàn.\nNán: Méi guānxi, wǒ huì.",
+              "translation_vi": "Nữ: Xin lỗi, tôi không biết nấu.\nNam: Không sao, tôi biết nấu."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

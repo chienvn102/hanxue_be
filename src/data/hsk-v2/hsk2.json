@@ -1,0 +1,663 @@
+{
+  "level": 2,
+  "exam_code": "H20901",
+  "total_questions": 60,
+  "duration_minutes": 55,
+  "passing_score": 120,
+  "audio_file": "Đề HSK 2 số 1 file nghe.mp3",
+  "sections": [
+    {
+      "section_type": "listening",
+      "title_zh": "听力",
+      "title_vi": "Nghe hiểu",
+      "instructions_vi": "Nghe và chọn đáp án. Mỗi câu nghe 2 lần.",
+      "parts": [
+        {
+          "range": [
+            1,
+            10
+          ],
+          "question_type": "true_false",
+          "options_count": 2,
+          "option_style": "true_false",
+          "image_style": "per_question",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第一部分：判断对错",
+          "notes": "",
+          "questions": [
+            {
+              "number": 1,
+              "correct_answer": "B"
+            },
+            {
+              "number": 2,
+              "correct_answer": "A"
+            },
+            {
+              "number": 3,
+              "correct_answer": "B"
+            },
+            {
+              "number": 4,
+              "correct_answer": "B"
+            },
+            {
+              "number": 5,
+              "correct_answer": "A"
+            },
+            {
+              "number": 6,
+              "correct_answer": "A"
+            },
+            {
+              "number": 7,
+              "correct_answer": "B"
+            },
+            {
+              "number": 8,
+              "correct_answer": "A"
+            },
+            {
+              "number": 9,
+              "correct_answer": "B"
+            },
+            {
+              "number": 10,
+              "correct_answer": "A"
+            }
+          ]
+        },
+        {
+          "range": [
+            11,
+            15
+          ],
+          "question_type": "image_grid_match",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "group_grid",
+          "group": {
+            "type": "image_grid",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "image_desc": "Lưới ảnh A–F (câu 11–15 nghe)"
+            }
+          },
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第二部分：听对话选图 (A–F)",
+          "notes": "",
+          "questions": [
+            {
+              "number": 11,
+              "correct_answer": "F"
+            },
+            {
+              "number": 12,
+              "correct_answer": "A"
+            },
+            {
+              "number": 13,
+              "correct_answer": "C"
+            },
+            {
+              "number": 14,
+              "correct_answer": "E"
+            },
+            {
+              "number": 15,
+              "correct_answer": "B"
+            }
+          ]
+        },
+        {
+          "range": [
+            16,
+            20
+          ],
+          "question_type": "image_grid_match",
+          "options_count": 5,
+          "option_style": "letter",
+          "image_style": "group_grid",
+          "group": {
+            "type": "image_grid",
+            "items": 5,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ],
+            "content": {
+              "image_desc": "Lưới ảnh A–E (câu 16–20 nghe)"
+            }
+          },
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第二部分：听对话选图 (A–E)",
+          "notes": "Cùng phần 2 nhưng lưới chỉ A–E (5 ô), tách part riêng theo đề thật.",
+          "questions": [
+            {
+              "number": 16,
+              "correct_answer": "B"
+            },
+            {
+              "number": 17,
+              "correct_answer": "E"
+            },
+            {
+              "number": 18,
+              "correct_answer": "C"
+            },
+            {
+              "number": 19,
+              "correct_answer": "A"
+            },
+            {
+              "number": 20,
+              "correct_answer": "D"
+            }
+          ]
+        },
+        {
+          "range": [
+            21,
+            30
+          ],
+          "question_type": "multiple_choice",
+          "options_count": 3,
+          "option_style": "text_pinyin",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第三部分：听对话选择",
+          "notes": "",
+          "questions": [
+            {
+              "number": 21,
+              "correct_answer": "C"
+            },
+            {
+              "number": 22,
+              "correct_answer": "B"
+            },
+            {
+              "number": 23,
+              "correct_answer": "A"
+            },
+            {
+              "number": 24,
+              "correct_answer": "C"
+            },
+            {
+              "number": 25,
+              "correct_answer": "A"
+            },
+            {
+              "number": 26,
+              "correct_answer": "A"
+            },
+            {
+              "number": 27,
+              "correct_answer": "B"
+            },
+            {
+              "number": 28,
+              "correct_answer": "B"
+            },
+            {
+              "number": 29,
+              "correct_answer": "C"
+            },
+            {
+              "number": 30,
+              "correct_answer": "C"
+            }
+          ]
+        },
+        {
+          "range": [
+            31,
+            35
+          ],
+          "question_type": "multiple_choice",
+          "options_count": 3,
+          "option_style": "text_pinyin",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第四部分：听长对话选择",
+          "notes": "",
+          "questions": [
+            {
+              "number": 31,
+              "correct_answer": "A"
+            },
+            {
+              "number": 32,
+              "correct_answer": "A"
+            },
+            {
+              "number": 33,
+              "correct_answer": "B"
+            },
+            {
+              "number": 34,
+              "correct_answer": "B"
+            },
+            {
+              "number": 35,
+              "correct_answer": "C"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section_type": "reading",
+      "title_zh": "阅读",
+      "title_vi": "Đọc hiểu",
+      "instructions_vi": "Đọc và chọn đáp án đúng.",
+      "parts": [
+        {
+          "range": [
+            36,
+            40
+          ],
+          "question_type": "image_grid_match",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "group_grid",
+          "group": {
+            "type": "image_grid",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "image_desc": "Lưới ảnh A–F (đọc, câu 36–40)"
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": false
+          },
+          "instruction_zh": "第一部分：句子与图片",
+          "notes": "",
+          "questions": [
+            {
+              "number": 36,
+              "correct_answer": "F"
+            },
+            {
+              "number": 37,
+              "correct_answer": "E"
+            },
+            {
+              "number": 38,
+              "correct_answer": "C"
+            },
+            {
+              "number": 39,
+              "correct_answer": "B"
+            },
+            {
+              "number": 40,
+              "correct_answer": "A"
+            }
+          ]
+        },
+        {
+          "range": [
+            41,
+            45
+          ],
+          "question_type": "word_bank_fill",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "word_bank",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "word": "完",
+                  "pinyin": "wán",
+                  "translation_vi": "xong/hết"
+                },
+                {
+                  "label": "B",
+                  "word": "进",
+                  "pinyin": "jìn",
+                  "translation_vi": "vào"
+                },
+                {
+                  "label": "C",
+                  "word": "过",
+                  "pinyin": "guò",
+                  "translation_vi": "đã từng"
+                },
+                {
+                  "label": "D",
+                  "word": "千",
+                  "pinyin": "qiān",
+                  "translation_vi": "nghìn"
+                },
+                {
+                  "label": "E",
+                  "word": "贵",
+                  "pinyin": "guì",
+                  "translation_vi": "đắt"
+                },
+                {
+                  "label": "F",
+                  "word": "自行车",
+                  "pinyin": "zìxíngchē",
+                  "translation_vi": "xe đạp"
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": false
+          },
+          "instruction_zh": "第二部分：选词填空",
+          "notes": "",
+          "questions": [
+            {
+              "number": 41,
+              "correct_answer": "D"
+            },
+            {
+              "number": 42,
+              "correct_answer": "B"
+            },
+            {
+              "number": 43,
+              "correct_answer": "A"
+            },
+            {
+              "number": 44,
+              "correct_answer": "C"
+            },
+            {
+              "number": 45,
+              "correct_answer": "F"
+            }
+          ]
+        },
+        {
+          "range": [
+            46,
+            50
+          ],
+          "question_type": "true_false",
+          "options_count": 2,
+          "option_style": "true_false",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": false
+          },
+          "instruction_zh": "第三部分：阅读判断",
+          "notes": "",
+          "questions": [
+            {
+              "number": 46,
+              "correct_answer": "A"
+            },
+            {
+              "number": 47,
+              "correct_answer": "B"
+            },
+            {
+              "number": 48,
+              "correct_answer": "B"
+            },
+            {
+              "number": 49,
+              "correct_answer": "A"
+            },
+            {
+              "number": 50,
+              "correct_answer": "B"
+            }
+          ]
+        },
+        {
+          "range": [
+            51,
+            55
+          ],
+          "question_type": "reply_match",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "reply_bank",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "sentence_zh": "它不认识你。",
+                  "pinyin": "Tā bú rènshi nǐ.",
+                  "translation_vi": "Nó không nhận ra bạn."
+                },
+                {
+                  "label": "B",
+                  "sentence_zh": "很近，从这儿坐出租车，六七分钟就到了。",
+                  "pinyin": "Hěn jìn, cóng zhèr zuò chūzūchē, liù-qī fēnzhōng jiù dào le.",
+                  "translation_vi": "Rất gần, từ đây đi taxi 6-7 phút là đến."
+                },
+                {
+                  "label": "C",
+                  "sentence_zh": "她三年的时间里，写了4本书。",
+                  "pinyin": "Tā sān nián de shíjiān lǐ, xiěle 4 běn shū.",
+                  "translation_vi": "Trong 3 năm, cô ấy đã viết 4 cuốn sách."
+                },
+                {
+                  "label": "D",
+                  "sentence_zh": "你比他大一岁。",
+                  "pinyin": "Nǐ bǐ tā dà yī suì.",
+                  "translation_vi": "Bạn hơn anh ấy một tuổi."
+                },
+                {
+                  "label": "E",
+                  "sentence_zh": "他在哪儿呢？你看见他了吗？",
+                  "pinyin": "Tā zài nǎr ne? Nǐ kànjiàn tā le ma?",
+                  "translation_vi": "Anh ấy ở đâu? Bạn có thấy anh ấy không?"
+                },
+                {
+                  "label": "F",
+                  "sentence_zh": "小刘叫我一起去跑步。",
+                  "pinyin": "Xiǎo Liú jiào wǒ yīqǐ qù pǎobù.",
+                  "translation_vi": "Tiểu Lưu rủ tôi cùng đi chạy bộ."
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": false
+          },
+          "instruction_zh": "第四部分：问答匹配 (A–F)",
+          "notes": "",
+          "questions": [
+            {
+              "number": 51,
+              "correct_answer": "C"
+            },
+            {
+              "number": 52,
+              "correct_answer": "B"
+            },
+            {
+              "number": 53,
+              "correct_answer": "F"
+            },
+            {
+              "number": 54,
+              "correct_answer": "A"
+            },
+            {
+              "number": 55,
+              "correct_answer": "D"
+            }
+          ]
+        },
+        {
+          "range": [
+            56,
+            60
+          ],
+          "question_type": "reply_match",
+          "options_count": 5,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "reply_bank",
+            "items": 5,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "sentence_zh": "他是我弟弟的中学同学。",
+                  "pinyin": "Tā shì wǒ dìdi de zhōngxué tóngxué.",
+                  "translation_vi": "Anh ấy là bạn học cấp 2 của em trai tôi."
+                },
+                {
+                  "label": "B",
+                  "sentence_zh": "谢谢您给我们的帮助！",
+                  "pinyin": "Xièxie nín gěi wǒmen de bāngzhù!",
+                  "translation_vi": "Cảm ơn sự giúp đỡ của bạn!"
+                },
+                {
+                  "label": "C",
+                  "sentence_zh": "他现在每天工作10个小时，星期六也不休息。",
+                  "pinyin": "Tā xiànzài měi tiān gōngzuò 10 ge xiǎoshí, xīngqīliù yě bù xiūxi.",
+                  "translation_vi": "Bây giờ anh ấy làm việc 10 tiếng mỗi ngày, thứ Bảy cũng không nghỉ."
+                },
+                {
+                  "label": "D",
+                  "sentence_zh": "你们听懂我说的话了吗？",
+                  "pinyin": "Nǐmen tīng dǒng wǒ shuō de huà le ma?",
+                  "translation_vi": "Các bạn có hiểu những gì tôi nói không?"
+                },
+                {
+                  "label": "E",
+                  "sentence_zh": "等一下。你怎么回来这么晚？",
+                  "pinyin": "Děng yīxià. Nǐ zěnme huílai zhème wǎn?",
+                  "translation_vi": "Khoan đã. Sao em về muộn thế?"
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": false
+          },
+          "instruction_zh": "第四部分：问答匹配 (A–E)",
+          "notes": "Bank câu trả lời chỉ A–E (5 lựa chọn), tách part theo đề thật.",
+          "questions": [
+            {
+              "number": 56,
+              "correct_answer": "D"
+            },
+            {
+              "number": 57,
+              "correct_answer": "C"
+            },
+            {
+              "number": 58,
+              "correct_answer": "E"
+            },
+            {
+              "number": 59,
+              "correct_answer": "B"
+            },
+            {
+              "number": 60,
+              "correct_answer": "A"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

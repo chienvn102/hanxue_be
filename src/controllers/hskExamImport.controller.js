@@ -70,6 +70,11 @@ async function createOcrImport(req, res) {
         if (![1, 2, 3, 4, 5, 6].includes(hskLevel)) {
             return res.status(400).json({ success: false, message: 'hskLevel phải nằm trong 1-6.' });
         }
+        // OCR v2 (blueprint-driven, đề format_version=2) — tách khỏi OCR v1, chỉ HSK1-3.
+        const wantV2 = req.body?.formatVersion === 2 || req.body?.formatVersion === '2' || req.body?.builder === 'v2';
+        if (wantV2 && ![1, 2, 3].includes(hskLevel)) {
+            return res.status(400).json({ success: false, message: 'OCR v2 hiện chỉ hỗ trợ HSK 1-3.' });
+        }
         if (!files.examPdf) {
             return res.status(400).json({ success: false, message: 'Thiếu file đề PDF (examPdf).' });
         }
@@ -102,8 +107,11 @@ async function createOcrImport(req, res) {
         });
 
         setImmediate(() => {
-            importService.processJob(jobId, files, { title, hskLevel, examType })
-                .catch(error => console.error('[hskImport] unhandled job error:', error));
+            const jobInput = { title, hskLevel, examType, formatVersion: wantV2 ? 2 : 1 };
+            const run = wantV2
+                ? importService.processJobV2(jobId, files, jobInput)
+                : importService.processJob(jobId, files, jobInput);
+            run.catch(error => console.error('[hskImport] unhandled job error:', error));
         });
 
         return res.status(202).json({

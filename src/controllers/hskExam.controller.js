@@ -7,6 +7,7 @@ const HskExamModel = require('../models/hskExam.model');
 const streakService = require('../services/streak.service');
 const xpService = require('../services/xp.service');
 const examTemplate = require('../services/hsk-exam-template.service');
+const hskV2 = require('../services/hsk-v2.service');
 const { resolveAudioUrl } = require('../services/audioUrl.service');
 const pushService = require('../services/push.service');
 const db = require('../config/database');
@@ -115,15 +116,27 @@ async function createExamFromTemplate(req, res) {
             });
         }
 
-        const { examId, totalQuestions } = await examTemplate.instantiateTemplate(level, {
-            title: req.body?.title,
-            exam_type: req.body?.exam_type,
-            description: req.body?.description,
-            audio_url: req.body?.audio_url, // v2: 1 audio/đề (optional)
-        });
+        let result;
+        if (hskV2.V2_LEVELS.includes(level)) {
+            // HSK1-3: dựng từ blueprint chuẩn (đúng số đáp án 3, group 6/5, image_match 3 ảnh).
+            // seed=true → có sẵn nội dung thật từ đề mẫu; seed=false → đề trống đúng cấu trúc.
+            result = await hskV2.instantiateV2(level, {
+                seed: req.body?.seed === true || req.body?.seed === 'true',
+                title: req.body?.title,
+                examType: req.body?.exam_type,
+            });
+        } else {
+            // HSK4-6: template cứng cũ (chưa có blueprint).
+            result = await examTemplate.instantiateTemplate(level, {
+                title: req.body?.title,
+                exam_type: req.body?.exam_type,
+                description: req.body?.description,
+                audio_url: req.body?.audio_url,
+            });
+        }
 
-        const exam = await HskExamModel.getExamById(examId, true);
-        res.status(201).json({ success: true, data: exam, totalQuestions });
+        const exam = await HskExamModel.getExamById(result.examId, true);
+        res.status(201).json({ success: true, data: exam, totalQuestions: result.totalQuestions });
     } catch (err) {
         console.error('Create exam from template error:', err);
         const status = err.code === 'UNSUPPORTED_LEVEL' ? 400 : 500;

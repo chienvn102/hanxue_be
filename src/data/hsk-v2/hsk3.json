@@ -1,0 +1,890 @@
+{
+  "level": 3,
+  "exam_code": "H31001",
+  "total_questions": 80,
+  "duration_minutes": 90,
+  "passing_score": 180,
+  "audio_file": "Đề thi tiếng Trung HSK3 SỐ 1.mp3",
+  "sections": [
+    {
+      "section_type": "listening",
+      "title_zh": "听力",
+      "title_vi": "Nghe hiểu",
+      "instructions_vi": "Nghe và chọn đáp án. Mỗi câu nghe 2 lần.",
+      "parts": [
+        {
+          "range": [
+            1,
+            5
+          ],
+          "question_type": "image_grid_match",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "group_grid",
+          "group": {
+            "type": "image_grid",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "image_desc": "Lưới ảnh A–F (nghe, câu 1–5)"
+            }
+          },
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第一部分：听对话选图 (A–F)",
+          "notes": "",
+          "questions": [
+            {
+              "number": 1,
+              "correct_answer": "B"
+            },
+            {
+              "number": 2,
+              "correct_answer": "C"
+            },
+            {
+              "number": 3,
+              "correct_answer": "E"
+            },
+            {
+              "number": 4,
+              "correct_answer": "F"
+            },
+            {
+              "number": 5,
+              "correct_answer": "A"
+            }
+          ]
+        },
+        {
+          "range": [
+            6,
+            10
+          ],
+          "question_type": "image_grid_match",
+          "options_count": 5,
+          "option_style": "letter",
+          "image_style": "group_grid",
+          "group": {
+            "type": "image_grid",
+            "items": 5,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ],
+            "content": {
+              "image_desc": "Lưới ảnh A–E (nghe, câu 6–10)"
+            }
+          },
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第一部分：听对话选图 (A–E)",
+          "notes": "Lưới chỉ A–E (5 ô), tách part theo đề thật.",
+          "questions": [
+            {
+              "number": 6,
+              "correct_answer": "B"
+            },
+            {
+              "number": 7,
+              "correct_answer": "C"
+            },
+            {
+              "number": 8,
+              "correct_answer": "A"
+            },
+            {
+              "number": 9,
+              "correct_answer": "D"
+            },
+            {
+              "number": 10,
+              "correct_answer": "E"
+            }
+          ]
+        },
+        {
+          "range": [
+            11,
+            20
+          ],
+          "question_type": "true_false",
+          "options_count": 2,
+          "option_style": "true_false",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第二部分：听录音判断对错",
+          "notes": "",
+          "questions": [
+            {
+              "number": 11,
+              "correct_answer": "B"
+            },
+            {
+              "number": 12,
+              "correct_answer": "A"
+            },
+            {
+              "number": 13,
+              "correct_answer": "B"
+            },
+            {
+              "number": 14,
+              "correct_answer": "A"
+            },
+            {
+              "number": 15,
+              "correct_answer": "A"
+            },
+            {
+              "number": 16,
+              "correct_answer": "B"
+            },
+            {
+              "number": 17,
+              "correct_answer": "A"
+            },
+            {
+              "number": 18,
+              "correct_answer": "A"
+            },
+            {
+              "number": 19,
+              "correct_answer": "B"
+            },
+            {
+              "number": 20,
+              "correct_answer": "B"
+            }
+          ]
+        },
+        {
+          "range": [
+            21,
+            30
+          ],
+          "question_type": "multiple_choice",
+          "options_count": 3,
+          "option_style": "text_pinyin",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第三部分：听对话选择",
+          "notes": "",
+          "questions": [
+            {
+              "number": 21,
+              "correct_answer": "B"
+            },
+            {
+              "number": 22,
+              "correct_answer": "C"
+            },
+            {
+              "number": 23,
+              "correct_answer": "C"
+            },
+            {
+              "number": 24,
+              "correct_answer": "C"
+            },
+            {
+              "number": 25,
+              "correct_answer": "B"
+            },
+            {
+              "number": 26,
+              "correct_answer": "C"
+            },
+            {
+              "number": 27,
+              "correct_answer": "A"
+            },
+            {
+              "number": 28,
+              "correct_answer": "A"
+            },
+            {
+              "number": 29,
+              "correct_answer": "B"
+            },
+            {
+              "number": 30,
+              "correct_answer": "C"
+            }
+          ]
+        },
+        {
+          "range": [
+            31,
+            40
+          ],
+          "question_type": "multiple_choice",
+          "options_count": 3,
+          "option_style": "text_pinyin",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": true,
+            "transcript": true,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第四部分：听长对话选择",
+          "notes": "",
+          "questions": [
+            {
+              "number": 31,
+              "correct_answer": "B"
+            },
+            {
+              "number": 32,
+              "correct_answer": "B"
+            },
+            {
+              "number": 33,
+              "correct_answer": "B"
+            },
+            {
+              "number": 34,
+              "correct_answer": "C"
+            },
+            {
+              "number": 35,
+              "correct_answer": "A"
+            },
+            {
+              "number": 36,
+              "correct_answer": "C"
+            },
+            {
+              "number": 37,
+              "correct_answer": "A"
+            },
+            {
+              "number": 38,
+              "correct_answer": "C"
+            },
+            {
+              "number": 39,
+              "correct_answer": "A"
+            },
+            {
+              "number": 40,
+              "correct_answer": "A"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section_type": "reading",
+      "title_zh": "阅读",
+      "title_vi": "Đọc hiểu",
+      "instructions_vi": "Đọc và chọn đáp án đúng.",
+      "parts": [
+        {
+          "range": [
+            41,
+            45
+          ],
+          "question_type": "reply_match",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "reply_bank",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "sentence_zh": "太好了！需要我帮忙吗？",
+                  "pinyin": "Tài hǎo le! Xūyào wǒ bāngmáng ma?",
+                  "translation_vi": "Tuyệt quá! Cần tôi giúp không?"
+                },
+                {
+                  "label": "B",
+                  "sentence_zh": "今天把我饿坏了，还有什么吃的吗？",
+                  "pinyin": "Jīntiān bǎ wǒ è huài le, hái yǒu shénme chī de ma?",
+                  "translation_vi": "Hôm nay đói quá, còn gì ăn không?"
+                },
+                {
+                  "label": "C",
+                  "sentence_zh": "你最好再检查一下，看还有没有问题。",
+                  "pinyin": "Nǐ zuì hǎo zài jiǎnchá yíxià, kàn hái yǒu méiyǒu wèntí.",
+                  "translation_vi": "Tốt nhất bạn nên kiểm tra lại."
+                },
+                {
+                  "label": "D",
+                  "sentence_zh": "没问题，你就放心吧。",
+                  "pinyin": "Méi wèntí, nǐ jiù fàngxīn ba.",
+                  "translation_vi": "Không vấn đề gì, bạn cứ yên tâm."
+                },
+                {
+                  "label": "E",
+                  "sentence_zh": "当然。我们先坐公共汽车，然后换地铁。",
+                  "pinyin": "Dāngrán. Wǒmen xiān zuò gōnggòng qìchē, ránhòu huàn dìtiě.",
+                  "translation_vi": "Tất nhiên. Đi xe buýt rồi chuyển tàu điện ngầm."
+                },
+                {
+                  "label": "F",
+                  "sentence_zh": "这条裤子你花了多少钱？",
+                  "pinyin": "Zhè tiáo kùzi nǐ huā le duōshao qián?",
+                  "translation_vi": "Chiếc quần này bạn mua bao nhiêu tiền?"
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": true
+          },
+          "instruction_zh": "第一部分：问答匹配 (A–F)",
+          "notes": "",
+          "questions": [
+            {
+              "number": 41,
+              "correct_answer": "C"
+            },
+            {
+              "number": 42,
+              "correct_answer": "B"
+            },
+            {
+              "number": 43,
+              "correct_answer": "A"
+            },
+            {
+              "number": 44,
+              "correct_answer": "D"
+            },
+            {
+              "number": 45,
+              "correct_answer": "F"
+            }
+          ]
+        },
+        {
+          "range": [
+            46,
+            50
+          ],
+          "question_type": "reply_match",
+          "options_count": 5,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "reply_bank",
+            "items": 5,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "sentence_zh": "银行马上就要关门了。",
+                  "pinyin": "Yínháng mǎshàng jiù yào guān mén le.",
+                  "translation_vi": "Ngân hàng sắp đóng cửa."
+                },
+                {
+                  "label": "B",
+                  "sentence_zh": "那是我叔叔的儿子，一岁多了。",
+                  "pinyin": "Nà shì wǒ shūshu de érzi, yí suì duō le.",
+                  "translation_vi": "Đó là con trai chú tôi, hơn một tuổi."
+                },
+                {
+                  "label": "C",
+                  "sentence_zh": "把菜单儿给我，我们喝杯绿茶吧？",
+                  "pinyin": "Bǎ càidānr gěi wǒ, wǒmen hē bēi lǜchá ba?",
+                  "translation_vi": "Đưa thực đơn, uống trà xanh nhé?"
+                },
+                {
+                  "label": "D",
+                  "sentence_zh": "我的几个同事周末想去北京玩儿，但他们都不会开车。",
+                  "pinyin": "Wǒ de jǐ ge tóngshì zhōumò xiǎng qù Běijīng wánr, dàn tāmen dōu bú huì kāichē.",
+                  "translation_vi": "Đồng nghiệp muốn đi Bắc Kinh nhưng không biết lái xe."
+                },
+                {
+                  "label": "E",
+                  "sentence_zh": "昨天的雨下得非常大，我没带伞。",
+                  "pinyin": "Zuótiān de yǔ xià de fēicháng dà, wǒ méi dài sǎn.",
+                  "translation_vi": "Hôm qua mưa to, tôi không mang ô."
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": true
+          },
+          "instruction_zh": "第一部分：问答匹配 (A–E)",
+          "notes": "Bank A–E (5 lựa chọn), tách part theo đề thật.",
+          "questions": [
+            {
+              "number": 46,
+              "correct_answer": "B"
+            },
+            {
+              "number": 47,
+              "correct_answer": "D"
+            },
+            {
+              "number": 48,
+              "correct_answer": "E"
+            },
+            {
+              "number": 49,
+              "correct_answer": "A"
+            },
+            {
+              "number": 50,
+              "correct_answer": "C"
+            }
+          ]
+        },
+        {
+          "range": [
+            51,
+            55
+          ],
+          "question_type": "word_bank_fill",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "word_bank",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "word": "其实",
+                  "pinyin": "qíshí",
+                  "translation_vi": "thật ra"
+                },
+                {
+                  "label": "B",
+                  "word": "感冒",
+                  "pinyin": "gǎnmào",
+                  "translation_vi": "bị cảm"
+                },
+                {
+                  "label": "C",
+                  "word": "附近",
+                  "pinyin": "fùjìn",
+                  "translation_vi": "gần đây"
+                },
+                {
+                  "label": "D",
+                  "word": "舒服",
+                  "pinyin": "shūfu",
+                  "translation_vi": "thoải mái"
+                },
+                {
+                  "label": "E",
+                  "word": "声音",
+                  "pinyin": "shēngyīn",
+                  "translation_vi": "âm thanh"
+                },
+                {
+                  "label": "F",
+                  "word": "把",
+                  "pinyin": "bǎ",
+                  "translation_vi": "giới từ 把"
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": true
+          },
+          "instruction_zh": "第二部分：选词填空 (bank 1)",
+          "notes": "",
+          "questions": [
+            {
+              "number": 51,
+              "correct_answer": "F"
+            },
+            {
+              "number": 52,
+              "correct_answer": "D"
+            },
+            {
+              "number": 53,
+              "correct_answer": "C"
+            },
+            {
+              "number": 54,
+              "correct_answer": "B"
+            },
+            {
+              "number": 55,
+              "correct_answer": "A"
+            }
+          ]
+        },
+        {
+          "range": [
+            56,
+            60
+          ],
+          "question_type": "word_bank_fill",
+          "options_count": 6,
+          "option_style": "letter",
+          "image_style": "none",
+          "group": {
+            "type": "word_bank",
+            "items": 6,
+            "labels": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F"
+            ],
+            "content": {
+              "items": [
+                {
+                  "label": "A",
+                  "word": "刻",
+                  "pinyin": "kè",
+                  "translation_vi": "15 phút (một khắc)"
+                },
+                {
+                  "label": "B",
+                  "word": "一直",
+                  "pinyin": "yìzhí",
+                  "translation_vi": "mãi/luôn"
+                },
+                {
+                  "label": "C",
+                  "word": "节",
+                  "pinyin": "jié",
+                  "translation_vi": "ngày lễ/tiết"
+                },
+                {
+                  "label": "D",
+                  "word": "爱好",
+                  "pinyin": "àihào",
+                  "translation_vi": "sở thích"
+                },
+                {
+                  "label": "E",
+                  "word": "被",
+                  "pinyin": "bèi",
+                  "translation_vi": "bị động 被"
+                },
+                {
+                  "label": "F",
+                  "word": "打扫",
+                  "pinyin": "dǎsǎo",
+                  "translation_vi": "dọn dẹp"
+                }
+              ]
+            }
+          },
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": true
+          },
+          "instruction_zh": "第二部分：选词填空 (bank 2)",
+          "notes": "Đề thật có 2 bộ từ A–F riêng cho 51–55 và 56–60.",
+          "questions": [
+            {
+              "number": 56,
+              "correct_answer": "A"
+            },
+            {
+              "number": 57,
+              "correct_answer": "B"
+            },
+            {
+              "number": 58,
+              "correct_answer": "E"
+            },
+            {
+              "number": 59,
+              "correct_answer": "F"
+            },
+            {
+              "number": 60,
+              "correct_answer": "C"
+            }
+          ]
+        },
+        {
+          "range": [
+            61,
+            70
+          ],
+          "question_type": "multiple_choice",
+          "options_count": 3,
+          "option_style": "text_pinyin",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": true,
+            "passage": true
+          },
+          "instruction_zh": "第三部分：阅读理解",
+          "notes": "",
+          "questions": [
+            {
+              "number": 61,
+              "correct_answer": "A"
+            },
+            {
+              "number": 62,
+              "correct_answer": "A"
+            },
+            {
+              "number": 63,
+              "correct_answer": "C"
+            },
+            {
+              "number": 64,
+              "correct_answer": "B"
+            },
+            {
+              "number": 65,
+              "correct_answer": "B"
+            },
+            {
+              "number": 66,
+              "correct_answer": "A"
+            },
+            {
+              "number": 67,
+              "correct_answer": "A"
+            },
+            {
+              "number": 68,
+              "correct_answer": "B"
+            },
+            {
+              "number": 69,
+              "correct_answer": "B"
+            },
+            {
+              "number": 70,
+              "correct_answer": "C"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section_type": "writing",
+      "title_zh": "书写",
+      "title_vi": "Viết",
+      "instructions_vi": "Sắp xếp câu và viết chữ Hán theo pinyin.",
+      "parts": [
+        {
+          "range": [
+            71,
+            75
+          ],
+          "question_type": "sentence_assembly",
+          "options_count": 0,
+          "option_style": "text",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第一部分：排列顺序",
+          "notes": "",
+          "questions": [
+            {
+              "question_text": "弟弟 / 高兴地 / 笑了",
+              "correct_answer": "弟弟高兴地笑了。",
+              "meta": {
+                "assembled": "弟弟高兴地笑了。",
+                "pinyin": "Dìdi gāoxìng de xiào le.",
+                "translation_vi": "Em trai vui vẻ cười."
+              },
+              "number": 71
+            },
+            {
+              "question_text": "简单 / 上午的考试 / 比较",
+              "correct_answer": "上午的考试比较简单。",
+              "meta": {
+                "assembled": "上午的考试比较简单。",
+                "pinyin": "Shàngwǔ de kǎoshì bǐjiào jiǎndān.",
+                "translation_vi": "Bài thi buổi sáng khá đơn giản."
+              },
+              "number": 72
+            },
+            {
+              "question_text": "越来越好 / 变得 / 这个城市的环境 / 了",
+              "correct_answer": "这个城市的环境变得越来越好了。",
+              "meta": {
+                "assembled": "这个城市的环境变得越来越好了。",
+                "pinyin": "Zhège chéngshì de huánjìng biàn de yuèláiyuè hǎo le.",
+                "translation_vi": "Môi trường thành phố ngày càng tốt hơn."
+              },
+              "number": 73
+            },
+            {
+              "question_text": "送给他 / 那位 / 医生 / 一个礼物",
+              "correct_answer": "那位医生送给他一个礼物。",
+              "meta": {
+                "assembled": "那位医生送给他一个礼物。",
+                "pinyin": "Nà wèi yīshēng sòng gěi tā yí ge lǐwù.",
+                "translation_vi": "Vị bác sĩ tặng anh ấy một món quà."
+              },
+              "number": 74
+            },
+            {
+              "question_text": "其他班的成绩 / 有 / 也 / 很大 / 提高",
+              "correct_answer": "其他班的成绩也有很大提高。",
+              "meta": {
+                "assembled": "其他班的成绩也有很大提高。",
+                "pinyin": "Qítā bān de chéngjī yě yǒu hěn dà tígāo.",
+                "translation_vi": "Thành tích các lớp khác cũng tiến bộ lớn."
+              },
+              "number": 75
+            }
+          ]
+        },
+        {
+          "range": [
+            76,
+            80
+          ],
+          "question_type": "fill_hanzi",
+          "options_count": 0,
+          "option_style": "text",
+          "image_style": "none",
+          "group": null,
+          "uses": {
+            "audio": false,
+            "transcript": false,
+            "statement": false,
+            "passage": false
+          },
+          "instruction_zh": "第二部分：根据拼音写汉字",
+          "notes": "",
+          "questions": [
+            {
+              "question_text": "chū",
+              "correct_answer": "出",
+              "meta": {
+                "context": "医院离这儿很远，我们坐出租车去吧。",
+                "hanzi": "出",
+                "translation_vi": "出 trong 出租车 (taxi)"
+              },
+              "number": 76
+            },
+            {
+              "question_text": "yuán",
+              "correct_answer": "元",
+              "meta": {
+                "context": "一元是10角，一角是10分。",
+                "hanzi": "元",
+                "translation_vi": "đơn vị nhân dân tệ"
+              },
+              "number": 77
+            },
+            {
+              "question_text": "jiào",
+              "correct_answer": "叫",
+              "meta": {
+                "context": "你知道他姓什么、叫什么吗？",
+                "hanzi": "叫",
+                "translation_vi": "tên là / gọi là"
+              },
+              "number": 78
+            },
+            {
+              "question_text": "Zhōng",
+              "correct_answer": "中",
+              "meta": {
+                "context": "中间穿红裙子的一定是他妹妹。",
+                "hanzi": "中",
+                "translation_vi": "trong 中间 (ở giữa)"
+              },
+              "number": 79
+            },
+            {
+              "question_text": "mǐ",
+              "correct_answer": "米",
+              "meta": {
+                "context": "我已经饱了，不想吃米饭了。",
+                "hanzi": "米",
+                "translation_vi": "trong 米饭 (cơm)"
+              },
+              "number": 80
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
