@@ -516,6 +516,16 @@ async function completeAttempt(attemptId, aiGrades = {}) {
 
         const totalScore = listeningScore + readingScore + writingScore;
 
+        // Thời gian làm bài: nếu FE không gửi time từng câu (tổng = 0) → dùng wall-clock
+        // started_at → NOW() (tính trong DB để khớp timezone, tránh lệch giờ JS).
+        if (totalTimeSpent <= 0) {
+            const [elapsedRows] = await conn.execute(
+                'SELECT TIMESTAMPDIFF(SECOND, started_at, NOW()) AS elapsed FROM hsk_exam_attempts WHERE id = ?',
+                [attemptId]
+            );
+            totalTimeSpent = Math.max(0, Number(elapsedRows[0]?.elapsed) || 0);
+        }
+
         // Get exam total + max possible score
         const examId = lockRows[0].exam_id;
         const [exam] = await conn.execute('SELECT passing_score, total_questions FROM hsk_exams WHERE id = ?', [examId]);
