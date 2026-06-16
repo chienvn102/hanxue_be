@@ -516,13 +516,12 @@ async function completeAttempt(attemptId, aiGrades = {}) {
 
         const totalScore = listeningScore + readingScore + writingScore;
 
-        // Get exam passing score and max possible score
+        // Get exam total + max possible score
         const examId = lockRows[0].exam_id;
         const [exam] = await conn.execute('SELECT passing_score, total_questions FROM hsk_exams WHERE id = ?', [examId]);
-        const isPassed = totalScore >= (exam[0]?.passing_score || 0);
         const unansweredCount = (exam[0]?.total_questions || 0) - correctCount - wrongCount - aiPendingCount;
 
-        // Calculate max possible score
+        // Max possible score: 1 câu = 1 điểm theo cấu trúc hiện tại → max = tổng q.points.
         const [maxScoreResult] = await conn.execute(
             `SELECT COALESCE(SUM(q.points), 0) as max_score
              FROM hsk_questions q
@@ -531,6 +530,10 @@ async function completeAttempt(attemptId, aiGrades = {}) {
             [examId]
         );
         const maxScore = maxScoreResult[0]?.max_score || 0;
+        // ĐẠT khi đúng ≥ 70% tổng điểm. KHÔNG dùng passing_score gốc (giá trị HSK chính
+        // thức 120/180 trên thang 200/300 — không khớp thang "1 câu 1 điểm" hiện tại).
+        const passThreshold = Math.ceil(maxScore * 0.7);
+        const isPassed = maxScore > 0 && totalScore >= passThreshold;
 
         await conn.execute(
             `UPDATE hsk_exam_attempts SET
