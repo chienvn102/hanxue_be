@@ -38,7 +38,10 @@ async function broadcastNewExam(exam) {
  * Mutates không sao vì objects vừa được serialize từ DB, không share reference.
  */
 async function resolveExamAudio(payload) {
-    if (!payload?.sections) return payload;
+    if (!payload) return payload;
+    // v2: 1 audio cấp đề (listening). Đề cũ = null → bỏ qua, vẫn dùng section.audio_url.
+    if (payload.audio_url) payload.audio_url = await resolveAudioUrl(payload.audio_url);
+    if (!payload.sections) return payload;
     for (const section of payload.sections) {
         if (section.audio_url) section.audio_url = await resolveAudioUrl(section.audio_url);
         if (Array.isArray(section.questions)) {
@@ -57,9 +60,10 @@ async function resolveExamAudio(payload) {
 
 async function listExams(req, res) {
     try {
-        const { hsk, type, page = 1, limit = 20 } = req.query;
+        const { hsk, type, page = 1, limit = 20, format_version } = req.query;
         const { rows, total } = await HskExamModel.getExamList({
-            hsk, type, page: parseInt(page), limit: parseInt(limit), activeOnly: false
+            hsk, type, page: parseInt(page), limit: parseInt(limit), activeOnly: false,
+            formatVersion: format_version, // tách builder v1/v2
         });
 
         res.json({
@@ -115,6 +119,7 @@ async function createExamFromTemplate(req, res) {
             title: req.body?.title,
             exam_type: req.body?.exam_type,
             description: req.body?.description,
+            audio_url: req.body?.audio_url, // v2: 1 audio/đề (optional)
         });
 
         const exam = await HskExamModel.getExamById(examId, true);
@@ -338,6 +343,7 @@ async function getExamAnswers(req, res) {
             hsk_level: exam.hsk_level,
             exam_type: exam.exam_type,
             duration_minutes: exam.duration_minutes,
+            audio_url: exam.audio_url, // v2: 1 audio/đề (listening)
             sections: exam.sections.map(section => ({
                 ...section,
                 groups: section.groups || [],

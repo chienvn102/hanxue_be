@@ -10,7 +10,7 @@ const { AI_GRADED_TYPES, gradeKey } = require('../services/hskWritingGrader.serv
 // EXAM OPERATIONS
 // ============================================================
 
-async function getExamList({ hsk, type, page = 1, limit = 20, activeOnly = true }) {
+async function getExamList({ hsk, type, page = 1, limit = 20, activeOnly = true, formatVersion }) {
     const offset = (page - 1) * limit;
     let sql = `SELECT * FROM hsk_exams WHERE 1=1`;
     const params = [];
@@ -26,6 +26,11 @@ async function getExamList({ hsk, type, page = 1, limit = 20, activeOnly = true 
         sql += ' AND exam_type = ?';
         params.push(type);
     }
+    // Tách builder v1/v2 (chỉ lọc khi được truyền — call cũ không đổi hành vi).
+    if (formatVersion) {
+        sql += ' AND format_version = ?';
+        params.push(parseInt(formatVersion));
+    }
 
     sql += ' ORDER BY hsk_level ASC, created_at DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), offset);
@@ -38,6 +43,7 @@ async function getExamList({ hsk, type, page = 1, limit = 20, activeOnly = true 
     if (activeOnly) countSql += ' AND is_active = TRUE';
     if (hsk) { countSql += ' AND hsk_level = ?'; countParams.push(parseInt(hsk)); }
     if (type) { countSql += ' AND exam_type = ?'; countParams.push(type); }
+    if (formatVersion) { countSql += ' AND format_version = ?'; countParams.push(parseInt(formatVersion)); }
 
     const [countResult] = await db.execute(countSql, countParams);
 
@@ -109,7 +115,7 @@ async function createExam(data) {
 }
 
 async function updateExam(id, data) {
-    const allowedFields = ['title', 'hsk_level', 'exam_type', 'duration_minutes', 'passing_score', 'description', 'is_active'];
+    const allowedFields = ['title', 'hsk_level', 'exam_type', 'duration_minutes', 'passing_score', 'description', 'is_active', 'audio_url'];
     const updates = [];
     const values = [];
 

@@ -38,8 +38,8 @@ const TEMPLATES = {
                 duration_seconds: 15 * 60,
                 parts: [
                     { count: 5, questionType: 'true_false',       group: null },
+                    { count: 5, questionType: 'image_match',      group: null }, // 3 ảnh A/B/C mỗi câu → option_images
                     { count: 5, questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F', items: 6 } },
-                    { count: 5, questionType: 'reply_match',      group: { type: 'reply_bank', title: 'Câu trả lời A–F', items: 6 } },
                     { count: 5, questionType: 'multiple_choice',  group: null },
                 ],
             },
@@ -49,8 +49,8 @@ const TEMPLATES = {
                 instructions: 'Bài đọc gồm 4 phần, 20 câu.',
                 duration_seconds: 17 * 60,
                 parts: [
-                    { count: 5, questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F', items: 6 } },
                     { count: 5, questionType: 'true_false',       group: null },
+                    { count: 5, questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F', items: 6 } },
                     { count: 5, questionType: 'reply_match',      group: { type: 'reply_bank', title: 'Câu trả lời A–F', items: 6 } },
                     { count: 5, questionType: 'word_bank_fill',   group: { type: 'word_bank',  title: 'Bộ từ A–F',     items: 6 } },
                 ],
@@ -70,8 +70,9 @@ const TEMPLATES = {
                 duration_seconds: 25 * 60,
                 parts: [
                     { count: 10, questionType: 'true_false',       group: null },
-                    { count: 10, questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F (1)', items: 6 } },
-                    { count: 10, questionType: 'reply_match',      group: { type: 'reply_bank', title: 'Câu trả lời A–F', items: 6 } },
+                    { count: 5,  questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F', items: 6 } },
+                    { count: 5,  questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–E', items: 5 } },
+                    { count: 10, questionType: 'multiple_choice',  group: null },
                     { count: 5,  questionType: 'multiple_choice',  group: null },
                 ],
             },
@@ -81,10 +82,11 @@ const TEMPLATES = {
                 instructions: 'Bài đọc gồm 4 phần, 25 câu.',
                 duration_seconds: 22 * 60,
                 parts: [
-                    { count: 5,  questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F', items: 6 } },
-                    { count: 5,  questionType: 'word_bank_fill',   group: { type: 'word_bank',  title: 'Bộ từ A–F',   items: 6 } },
-                    { count: 5,  questionType: 'true_false',       group: null },
-                    { count: 10, questionType: 'multiple_choice',  group: null },
+                    { count: 5, questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F', items: 6 } },
+                    { count: 5, questionType: 'word_bank_fill',   group: { type: 'word_bank',  title: 'Bộ từ A–F',   items: 6 } },
+                    { count: 5, questionType: 'true_false',       group: null },
+                    { count: 5, questionType: 'reply_match',      group: { type: 'reply_bank', title: 'Câu trả lời A–F', items: 6 } },
+                    { count: 5, questionType: 'reply_match',      group: { type: 'reply_bank', title: 'Câu trả lời A–E', items: 5 } },
                 ],
             },
         ],
@@ -101,7 +103,8 @@ const TEMPLATES = {
                 instructions: 'Bài thi nghe gồm 4 phần, 40 câu. Mỗi câu nghe 2 lần.',
                 duration_seconds: 35 * 60,
                 parts: [
-                    { count: 10, questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F', items: 6 } },
+                    { count: 5,  questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–F', items: 6 } },
+                    { count: 5,  questionType: 'image_grid_match', group: { type: 'image_grid', title: 'Lưới ảnh A–E', items: 5 } },
                     { count: 10, questionType: 'true_false',       group: null },
                     { count: 10, questionType: 'multiple_choice',  group: null },
                     { count: 10, questionType: 'multiple_choice',  group: null },
@@ -113,7 +116,8 @@ const TEMPLATES = {
                 instructions: 'Bài đọc gồm 3 phần, 30 câu.',
                 duration_seconds: 30 * 60,
                 parts: [
-                    { count: 10, questionType: 'reply_match',     group: { type: 'reply_bank', title: 'Câu trả lời A–F', items: 6 } },
+                    { count: 5,  questionType: 'reply_match',     group: { type: 'reply_bank', title: 'Câu trả lời A–F', items: 6 } },
+                    { count: 5,  questionType: 'reply_match',     group: { type: 'reply_bank', title: 'Câu trả lời A–E', items: 5 } },
                     { count: 10, questionType: 'word_bank_fill',  group: { type: 'word_bank',  title: 'Bộ từ A–F',     items: 6 } },
                     { count: 10, questionType: 'multiple_choice', group: null },
                 ],
@@ -153,9 +157,9 @@ const TEMPLATES = {
                 instructions: 'HSK 4 reading: word bank + passage MCQ.',
                 duration_seconds: 40 * 60,
                 parts: [
-                    { count: 10, questionType: 'word_bank_fill', group: { type: 'word_bank', title: 'Bo tu A-F', items: 6 } },
-                    { count: 10, questionType: 'multiple_choice', group: null },
-                    { count: 20, questionType: 'multiple_choice', group: { type: 'passage_multi', title: 'Passage multi-question', items: 0 } },
+                    { count: 10, questionType: 'word_bank_fill', group: { type: 'word_bank', title: 'Bộ từ A-F', items: 6 } },
+                    { count: 10, questionType: 'sentence_order', group: null },
+                    { count: 20, questionType: 'multiple_choice', group: { type: 'passage_multi', title: 'Đoạn đọc dùng chung', items: 0 } },
                 ],
             },
             {
@@ -310,11 +314,13 @@ async function instantiateTemplate(level, overrides = {}) {
             rawType === 'mock' || rawType === 'official' ? 'exam' : 'practice';
         const description = overrides.description || null;
 
+        // v2: đề tạo từ template = format_version 2 + 1 audio/đề (optional).
+        const audioUrl = overrides.audio_url || null;
         const [examRes] = await conn.execute(
             `INSERT INTO hsk_exams
-               (title, hsk_level, exam_type, duration_minutes, passing_score, description, total_questions)
-             VALUES (?, ?, ?, ?, ?, ?, 0)`,
-            [examTitle, level, examType, tmpl.duration_minutes, tmpl.passing_score, description]
+               (title, hsk_level, exam_type, duration_minutes, passing_score, description, total_questions, format_version, audio_url)
+             VALUES (?, ?, ?, ?, ?, ?, 0, 2, ?)`,
+            [examTitle, level, examType, tmpl.duration_minutes, tmpl.passing_score, description, audioUrl]
         );
         const examId = examRes.insertId;
 
