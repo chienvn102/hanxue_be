@@ -115,6 +115,7 @@ async function createExam(data) {
 }
 
 async function updateExam(id, data) {
+    const { normalizeAudioRef } = require('../services/audioUrl.service');
     const allowedFields = ['title', 'hsk_level', 'exam_type', 'duration_minutes', 'passing_score', 'description', 'is_active', 'audio_url'];
     const updates = [];
     const values = [];
@@ -123,7 +124,10 @@ async function updateExam(id, data) {
         if (data[field] !== undefined) {
             updates.push(`${field} = ?`);
             // Coerce legacy 'mock'/'official' → 'exam' (migration 022).
-            values.push(field === 'exam_type' ? normalizeExamType(data[field]) : data[field]);
+            if (field === 'exam_type') values.push(normalizeExamType(data[field]));
+            // 1 audio/đề: lưu gs:// (signed URL dài >500 + hết hạn).
+            else if (field === 'audio_url') values.push(data[field] ? normalizeAudioRef(data[field]) : data[field]);
+            else values.push(data[field]);
         }
     }
 
@@ -248,6 +252,7 @@ async function createGroup(data) {
 }
 
 async function updateGroup(id, data) {
+    const { normalizeAudioRef } = require('../services/audioUrl.service');
     const allowedFields = ['group_type', 'title_vi', 'instructions_vi', 'content', 'order_index'];
     const updates = [];
     const values = [];
@@ -255,7 +260,9 @@ async function updateGroup(id, data) {
         if (data[field] !== undefined) {
             updates.push(`${field} = ?`);
             if (field === 'content' && data[field] !== null && typeof data[field] === 'object') {
-                values.push(JSON.stringify(data[field]));
+                const c = { ...data[field] };
+                if (c.image_url) c.image_url = normalizeAudioRef(c.image_url); // lưới ảnh 1 tấm → gs://
+                values.push(JSON.stringify(c));
             } else {
                 values.push(data[field]);
             }
@@ -336,10 +343,14 @@ async function updateQuestion(id, data) {
     for (const field of allowedFields) {
         if (data[field] !== undefined) {
             updates.push(`${field} = ?`);
-            if (['options', 'option_images', 'meta'].includes(field) && data[field] !== null && typeof data[field] === 'object') {
+            if (field === 'option_images' && Array.isArray(data[field])) {
+                // Chuẩn hoá từng URL ảnh → gs:// (signed URL dài + hết hạn).
+                values.push(JSON.stringify(data[field].map(v => (v ? normalizeAudioRef(v) : v))));
+            } else if (['options', 'option_images', 'meta'].includes(field) && data[field] !== null && typeof data[field] === 'object') {
                 values.push(JSON.stringify(data[field]));
-            } else if (field === 'question_audio') {
-                values.push(normalizeAudioRef(data[field]));
+            } else if (field === 'question_audio' || field === 'question_image') {
+                // gs:// ngắn + vĩnh viễn thay vì signed URL >500 ký tự (vỡ cột) + hết hạn 24h.
+                values.push(data[field] ? normalizeAudioRef(data[field]) : data[field]);
             } else {
                 values.push(data[field]);
             }
