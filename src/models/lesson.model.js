@@ -39,6 +39,34 @@ const Lesson = {
     },
 
     /**
+     * Lesson-level gating: a lesson is unlocked for a user when it is the first
+     * active lesson of its course (by order_index, id) OR the immediately
+     * previous active lesson has been completed (status='completed').
+     */
+    isUnlockedForUser: async (userId, lessonId) => {
+        const [[lesson]] = await db.execute(
+            'SELECT id, course_id, order_index FROM lessons WHERE id = ? AND is_active = TRUE',
+            [lessonId]
+        );
+        if (!lesson) return true; // unknown/inactive → let the route handle 404
+
+        const [[prev]] = await db.execute(
+            `SELECT id FROM lessons
+              WHERE course_id = ? AND is_active = TRUE
+                AND (order_index < ? OR (order_index = ? AND id < ?))
+              ORDER BY order_index DESC, id DESC LIMIT 1`,
+            [lesson.course_id, lesson.order_index, lesson.order_index, lesson.id]
+        );
+        if (!prev) return true; // first lesson of the course
+
+        const [[prog]] = await db.execute(
+            'SELECT status FROM user_lesson_progress WHERE user_id = ? AND lesson_id = ? LIMIT 1',
+            [userId, prev.id]
+        );
+        return prog?.status === 'completed';
+    },
+
+    /**
      * Lightweight metadata for FE practice headers ("Từ vựng bài <title> · HSK <n>").
      * Joins the course title so the FE can render a single breadcrumb.
      */

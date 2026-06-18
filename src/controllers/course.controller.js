@@ -22,6 +22,14 @@ function validateHskLevel(value) {
     return null;
 }
 
+// '' / '0' / null → null (no final exam); otherwise a positive exam id.
+function normalizeFinalExamId(value) {
+    if (value === undefined) return undefined; // not provided → leave untouched
+    if (value === null || value === '' || value === '0' || value === 0) return null;
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 // Get all courses (public/private)
 exports.getCourses = async (req, res) => {
     try {
@@ -53,6 +61,21 @@ exports.getCourse = async (req, res) => {
     }
 };
 
+// GET /api/courses/:id/final-exam — end-of-course exam status for this user.
+// { examId, exam, allLessonsPassed, examUnlocked, passed }
+exports.getCourseFinalExam = async (req, res) => {
+    try {
+        const userId = req.user ? req.user.userId : null;
+        if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+        const status = await Course.getFinalExamStatus(userId, req.params.id);
+        if (!status) return res.status(404).json({ success: false, message: 'Course not found' });
+        res.json({ success: true, data: status });
+    } catch (error) {
+        console.error('Get course final exam error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
 // Admin: Create Course
 exports.createCourse = async (req, res) => {
     try {
@@ -65,7 +88,8 @@ exports.createCourse = async (req, res) => {
         if (hskErr) return res.status(400).json({ success: false, message: hskErr });
 
         const id = await Course.create({
-            hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index
+            hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index,
+            final_exam_id: normalizeFinalExamId(req.body.final_exam_id),
         });
 
         // Fire-and-forget: notify learners at this HSK level
@@ -95,7 +119,11 @@ exports.updateCourse = async (req, res) => {
             const hskErr = validateHskLevel(req.body.hsk_level);
             if (hskErr) return res.status(400).json({ success: false, message: hskErr });
         }
-        const affected = await Course.update(req.params.id, req.body);
+        // Normalize the final-exam picker value ('' → null) before the generic update.
+        const update = { ...req.body };
+        const normalizedExam = normalizeFinalExamId(req.body.final_exam_id);
+        if (normalizedExam !== undefined) update.final_exam_id = normalizedExam;
+        const affected = await Course.update(req.params.id, update);
         if (affected === 0) {
             return res.status(404).json({ success: false, message: 'Course not found or no changes' });
         }

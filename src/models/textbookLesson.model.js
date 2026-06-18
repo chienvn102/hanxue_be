@@ -69,7 +69,8 @@ const TextbookLesson = {
             userId
                 ? db.execute(
                     `SELECT status, vocab_done, passage_done, grammar_done,
-                            exercise_done, completed_at
+                            exercise_done, completed_at,
+                            score_percentage, quiz_score, writing_score
                        FROM user_lesson_progress
                       WHERE user_id = ? AND lesson_id = ?
                       LIMIT 1`,
@@ -102,6 +103,9 @@ const TextbookLesson = {
                 grammar_done: !!progressRows[0].grammar_done,
                 exercise_done: !!progressRows[0].exercise_done,
                 completed_at: progressRows[0].completed_at,
+                score_percentage: progressRows[0].score_percentage === null ? null : Number(progressRows[0].score_percentage),
+                quiz_score: progressRows[0].quiz_score === null ? null : Number(progressRows[0].quiz_score),
+                writing_score: progressRows[0].writing_score === null ? null : Number(progressRows[0].writing_score),
             }
             : null;
 
@@ -312,11 +316,15 @@ const TextbookLesson = {
     },
 
     /**
-     * Writing submission — rule-based grading by keyword hits + length.
+     * Writing submission — Groq grading (services/lessonWritingGrader) with a
+     * keyword/length heuristic fallback. Persists the submission, stores the
+     * writing_score on lesson progress, then recomputes the lesson aggregate
+     * (avg quiz + writing) which gates exercise_done at LESSON_PASS_PCT (≥70%).
      */
     async submitWriting(userId, exerciseId, answerZh) {
         const [exRows] = await db.execute(
-            `SELECT id, lesson_id, expected_keywords, min_chars, max_chars
+            `SELECT id, lesson_id, prompt_vi, prompt_zh, expected_keywords,
+                    sample_answer_zh, min_chars, max_chars
                FROM lesson_writing_exercises WHERE id = ? LIMIT 1`,
             [exerciseId]
         );
@@ -327,6 +335,7 @@ const TextbookLesson = {
         const text = (answerZh || '').trim();
         const hanCharCount = (text.match(/[一-鿿]/g) || []).length;
 
+        // ---- Keyword/length heuristic (fallback + always-available baseline) ----
         const hits = [];
         const missed = [];
         for (const kw of keywords) {
@@ -354,12 +363,37 @@ const TextbookLesson = {
             }
         }
 
+        // ---- Groq grading (overrides heuristic when enabled + healthy) ----
+        let ai = null;
+        try {
+            const grader = require('../services/lessonWritingGrader.service');
+            ai = await grader.gradeWriting({
+                promptVi: exercise.prompt_vi,
+                promptZh: exercise.prompt_zh,
+                expectedKeywords: keywords,
+                sampleAnswerZh: exercise.sample_answer_zh,
+                minChars: exercise.min_chars,
+                maxChars: exercise.max_chars,
+                answerZh: text,
+            });
+        } catch (e) {
+            console.warn('[lessonWritingGrader] fell back to keyword grading:', e.message);
+        }
+        if (ai) {
+            score = ai.score;
+            feedback = ai.feedbackVi || feedback;
+        }
+
         const [insRes] = await db.execute(
             `INSERT INTO user_writing_submissions
                 (user_id, exercise_id, answer_zh, score, keyword_hits, feedback_vi)
              VALUES (?, ?, ?, ?, ?, ?)`,
             [userId, exerciseId, answerZh, score, JSON.stringify(hits), feedback]
         );
+
+        // Store writing_score on lesson progress + recompute the aggregate/gate.
+        await this.upsertProgressScore(userId, exercise.lesson_id, 'writing_score', score);
+        const progress = await this.recomputeLessonScore(userId, exercise.lesson_id);
 
         return {
             submissionId: insRes.insertId,
@@ -370,7 +404,115 @@ const TextbookLesson = {
             keywordMissed: missed,
             feedback,
             charCount: hanCharCount,
+            ai: ai
+                ? {
+                    source: ai.source,
+                    feedbackZh: ai.feedbackZh,
+                    suggestedAnswer: ai.suggestedAnswer,
+                    strengths: ai.strengths,
+                    issues: ai.issues,
+                }
+                : null,
+            lessonScore: progress.aggregate,
+            lessonPassed: progress.passed,
+            justCompleted: progress.justCompleted,
+            courseId: progress.courseId,
         };
+    },
+
+    /**
+     * Upsert one numeric score column (quiz_score | writing_score) on
+     * user_lesson_progress, creating the row in 'in_progress' state if needed.
+     */
+    async upsertProgressScore(userId, lessonId, column, value) {
+        if (!['quiz_score', 'writing_score'].includes(column)) {
+            throw new Error(`invalid score column: ${column}`);
+        }
+        await db.execute(
+            `INSERT INTO user_lesson_progress (user_id, lesson_id, status, ${column})
+             VALUES (?, ?, 'in_progress', ?)
+             ON DUPLICATE KEY UPDATE ${column} = VALUES(${column}),
+                 status = IF(status = 'completed', status, 'in_progress')`,
+            [userId, lessonId, value]
+        );
+    },
+
+    /**
+     * Recompute a lesson's aggregate score and exercise gate for one user.
+     * - Required components = those the lesson actually has: quiz (any linked
+     *   vocab/grammar) and/or writing (any writing exercise).
+     * - score_percentage = average of submitted required component scores.
+     * - exercise_done flips to 1 only when ALL required components are
+     *   submitted AND the average ≥ LESSON_PASS_PCT (never downgrades).
+     * - When all 4 section flags are done, transitions status → 'completed'.
+     * Returns { aggregate, passed, justCompleted, courseId, quizScore, writingScore }.
+     */
+    async recomputeLessonScore(userId, lessonId) {
+        const [[counts]] = await db.execute(
+            `SELECT
+                (SELECT COUNT(*) FROM lesson_vocabulary WHERE lesson_id = ?)        AS vocab_n,
+                (SELECT COUNT(*) FROM lesson_grammar WHERE lesson_id = ?)           AS grammar_n,
+                (SELECT COUNT(*) FROM lesson_writing_exercises WHERE lesson_id = ?) AS writing_n,
+                (SELECT course_id FROM lessons WHERE id = ?)                        AS course_id`,
+            [lessonId, lessonId, lessonId, lessonId]
+        );
+        const hasQuiz = Number(counts?.vocab_n || 0) + Number(counts?.grammar_n || 0) > 0;
+        const hasWriting = Number(counts?.writing_n || 0) > 0;
+        const courseId = counts?.course_id || null;
+
+        const [progRows] = await db.execute(
+            `SELECT quiz_score, writing_score,
+                    vocab_done, passage_done, grammar_done, exercise_done, status
+               FROM user_lesson_progress
+              WHERE user_id = ? AND lesson_id = ? LIMIT 1`,
+            [userId, lessonId]
+        );
+        const row = progRows[0] || {};
+        const quizScore = row.quiz_score === null || row.quiz_score === undefined ? null : Number(row.quiz_score);
+        const writingScore = row.writing_score === null || row.writing_score === undefined ? null : Number(row.writing_score);
+
+        const required = [];
+        if (hasQuiz) required.push(quizScore);
+        if (hasWriting) required.push(writingScore);
+
+        const allSubmitted = required.length > 0 && required.every((s) => s !== null);
+        const present = required.filter((s) => s !== null);
+        const aggregate = present.length
+            ? Math.round((present.reduce((a, b) => a + b, 0) / present.length) * 100) / 100
+            : null;
+
+        const passThreshold = Number.parseInt(process.env.LESSON_PASS_PCT || '70', 10);
+        const passed = allSubmitted && aggregate !== null && aggregate >= passThreshold;
+
+        // Persist aggregate + raise exercise_done when passed (never downgrade).
+        await db.execute(
+            `UPDATE user_lesson_progress
+                SET score_percentage = ?, exercise_done = GREATEST(exercise_done, ?)
+              WHERE user_id = ? AND lesson_id = ?`,
+            [aggregate, passed ? 1 : 0, userId, lessonId]
+        );
+
+        // Re-read flags and transition to completed if all 4 sections done.
+        const [afterRows] = await db.execute(
+            `SELECT vocab_done, passage_done, grammar_done, exercise_done, status
+               FROM user_lesson_progress
+              WHERE user_id = ? AND lesson_id = ? LIMIT 1`,
+            [userId, lessonId]
+        );
+        const after = afterRows[0] || {};
+        const allDone = after.vocab_done && after.passage_done && after.grammar_done && after.exercise_done;
+        let justCompleted = false;
+        if (allDone && after.status !== 'completed') {
+            await db.execute(
+                `UPDATE user_lesson_progress
+                    SET status = 'completed', completed_at = NOW()
+                  WHERE user_id = ? AND lesson_id = ?`,
+                [userId, lessonId]
+            );
+            justCompleted = true;
+        }
+
+        return { aggregate, passed, justCompleted, courseId, quizScore, writingScore };
     },
 };
 

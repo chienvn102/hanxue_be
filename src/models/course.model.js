@@ -1,22 +1,39 @@
 const db = require('../config/database');
 
 const Course = {
-    // List all courses with lesson count
+    // List all courses with lesson count + (per user) completed lessons and
+    // whether the chosen final exam has been passed — so the FE can show a
+    // final-exam-aware locked/complete state for each course card.
     findAll: async (userId = null) => {
         const sql = `
-            SELECT c.*, 
+            SELECT c.*,
                    COUNT(l.id) as lesson_count,
                    (SELECT COUNT(*) FROM user_lesson_progress ulp
                     JOIN lessons l2 ON ulp.lesson_id = l2.id
-                    WHERE l2.course_id = c.id AND ulp.user_id = ? AND ulp.status = 'completed') as completed_lessons
+                    WHERE l2.course_id = c.id AND ulp.user_id = ? AND ulp.status = 'completed') as completed_lessons,
+                   (SELECT COUNT(*) FROM hsk_exam_attempts a
+                    WHERE a.user_id = ? AND a.exam_id = c.final_exam_id
+                      AND a.status = 'completed' AND a.is_passed = 1) as final_exam_passed_cnt
             FROM courses c
             LEFT JOIN lessons l ON c.id = l.course_id AND l.is_active = TRUE
             WHERE c.is_active = TRUE
             GROUP BY c.id
             ORDER BY c.hsk_level ASC, c.order_index ASC
         `;
-        const [rows] = await db.execute(sql, [userId]);
+        const [rows] = await db.execute(sql, [userId, userId]);
         return rows;
+    },
+
+    // Has the user passed a given HSK exam (any completed, passed attempt)?
+    hasPassedExam: async (userId, examId) => {
+        if (!examId) return false;
+        const [rows] = await db.execute(
+            `SELECT 1 FROM hsk_exam_attempts
+              WHERE user_id = ? AND exam_id = ? AND status = 'completed' AND is_passed = 1
+              LIMIT 1`,
+            [userId, examId]
+        );
+        return rows.length > 0;
     },
 
     findById: async (id) => {
@@ -34,6 +51,7 @@ const Course = {
                 `SELECT
                         c.id AS course_id,
                         c.title AS prerequisite_title,
+                        c.final_exam_id AS final_exam_id,
                         COUNT(l.id) AS total_lessons,
                         SUM(CASE WHEN ulp.status = 'completed' THEN 1 ELSE 0 END) AS completed_lessons,
                         MAX(cc.is_complete) AS completion_recorded
@@ -53,6 +71,7 @@ const Course = {
                 `SELECT
                         c.id AS course_id,
                         c.title AS prerequisite_title,
+                        c.final_exam_id AS final_exam_id,
                         COUNT(l.id) AS total_lessons,
                         SUM(CASE WHEN ulp.status = 'completed' THEN 1 ELSE 0 END) AS completed_lessons,
                         0 AS completion_recorded
@@ -69,11 +88,57 @@ const Course = {
         if (!row) return null;
         const totalLessons = Number(row.total_lessons || 0);
         const completedLessons = Number(row.completed_lessons || 0);
+        const lessonsComplete = totalLessons > 0 && completedLessons >= totalLessons;
+
+        // A course that has a final exam is only "complete" when all lessons are
+        // done AND that exam is passed (the end-of-course gate). Courses without
+        // a final exam keep the legacy rule (recorded completion OR all lessons).
+        const finalExamId = row.final_exam_id ?? null;
+        const finalExamPassed = finalExamId != null
+            ? await Course.hasPassedExam(userId, finalExamId)
+            : true;
+        const isComplete = finalExamId != null
+            ? (lessonsComplete && finalExamPassed)
+            : (Boolean(row.completion_recorded) || lessonsComplete);
+
         return {
             ...row,
             total_lessons: totalLessons,
             completed_lessons: completedLessons,
-            is_complete: Boolean(row.completion_recorded) || completedLessons >= totalLessons,
+            final_exam_id: finalExamId,
+            lessons_complete: lessonsComplete,
+            final_exam_passed: finalExamPassed,
+            is_complete: isComplete,
+        };
+    },
+
+    /**
+     * End-of-course exam status for one user.
+     * @returns { examId, exam, allLessonsPassed, examUnlocked, passed } | null
+     */
+    getFinalExamStatus: async (userId, courseId) => {
+        const progress = await Course.getProgressForUser(userId, courseId);
+        if (!progress) return null;
+        const examId = progress.final_exam_id ?? null;
+        const allLessonsPassed = Boolean(progress.lessons_complete);
+
+        let exam = null;
+        let passed = false;
+        if (examId != null) {
+            passed = Boolean(progress.final_exam_passed);
+            const [rows] = await db.execute(
+                `SELECT id, title, hsk_level, duration_minutes, total_questions
+                   FROM hsk_exams WHERE id = ? LIMIT 1`,
+                [examId]
+            );
+            exam = rows[0] || null;
+        }
+        return {
+            examId,
+            exam,
+            allLessonsPassed,
+            examUnlocked: examId != null && allLessonsPassed,
+            passed,
         };
     },
 
@@ -94,8 +159,9 @@ const Course = {
         const progress = await Course.getProgressForUser(userId, courseId);
         if (!progress) return false;
 
-        const isComplete = Number(progress.total_lessons || 0) > 0
-            && Number(progress.completed_lessons || 0) >= Number(progress.total_lessons || 0);
+        // Final-exam-aware: getProgressForUser.is_complete already requires the
+        // final exam to be passed when the course has one.
+        const isComplete = Boolean(progress.is_complete);
 
         try {
             await db.execute(
@@ -110,6 +176,19 @@ const Course = {
             if (error.code !== 'ER_NO_SUCH_TABLE') throw error;
         }
         return isComplete;
+    },
+
+    // Called after a final exam attempt is passed: refresh course_completions
+    // for every active course that uses this exam as its end-of-course test.
+    onFinalExamPassed: async (userId, examId) => {
+        if (!examId) return;
+        const [courses] = await db.execute(
+            'SELECT id FROM courses WHERE final_exam_id = ? AND is_active = TRUE',
+            [examId]
+        );
+        for (const c of courses) {
+            await Course.markCompletionIfDone(userId, c.id);
+        }
     },
 
     reopenCompletionsForCourse: async (courseId) => {
@@ -127,13 +206,13 @@ const Course = {
         }
     },
 
-    create: async ({ hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index }) => {
+    create: async ({ hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index, final_exam_id }) => {
         const [result] = await db.execute(
             `INSERT INTO courses
-            (hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index)
-            VALUES (?, ?, ?, ?, ?, ?)`,
+            (hsk_level, title, description, thumbnail_url, prerequisite_course_id, order_index, final_exam_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
             // mysql2 cấm bind `undefined` → ép về null cho field optional.
-            [hsk_level, title, description ?? null, thumbnail_url ?? null, prerequisite_course_id ?? null, order_index ?? 0]
+            [hsk_level, title, description ?? null, thumbnail_url ?? null, prerequisite_course_id ?? null, order_index ?? 0, final_exam_id ?? null]
         );
         return result.insertId;
     },

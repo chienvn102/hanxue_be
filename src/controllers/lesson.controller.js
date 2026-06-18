@@ -342,6 +342,8 @@ exports.markSectionDone = async (req, res) => {
                     refId: lessonId,
                     refType: 'lesson',
                 });
+                const lesson = await Lesson.findById(lessonId);
+                if (lesson?.course_id) await Course.markCompletionIfDone(userId, lesson.course_id);
             } catch (e) {
                 console.error('Streak/XP update failed (non-blocking):', e);
             }
@@ -364,6 +366,21 @@ exports.submitWritingExercise = async (req, res) => {
             return res.status(400).json({ success: false, message: 'answerZh required' });
         }
         const result = await TextbookLesson.submitWriting(userId, exerciseId, answerZh);
+
+        // Lesson just transitioned to completed via the scored exercise gate.
+        if (result.justCompleted) {
+            try {
+                await streakService.updateStreak(userId);
+                await xpService.awardXp(userId, 'lesson_complete', {
+                    refId: result.lessonId,
+                    refType: 'lesson',
+                });
+                if (result.courseId) await Course.markCompletionIfDone(userId, result.courseId);
+            } catch (e) {
+                console.error('Streak/XP update failed (non-blocking):', e);
+            }
+        }
+
         res.json({ success: true, data: result });
     } catch (error) {
         console.error('Submit writing error:', error);

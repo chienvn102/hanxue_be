@@ -77,7 +77,34 @@ async function checkLessonCourseUnlocked(req, res, next) {
     }
 }
 
+// Lesson-to-lesson gating: must complete the previous lesson to open the next.
+// Only enforced for logged-in users (guests/admins bypass); gated behind the
+// same COURSE_UNLOCK_ENFORCEMENT flag as course-level locking.
+async function checkLessonUnlocked(req, res, next) {
+    try {
+        if (!UNLOCK_ENFORCED) return next();
+        if (req.user?.role === 'admin' || req.admin) return next();
+
+        const userId = req.user?.userId;
+        if (!userId) return next(); // lesson lock is per-user; guests use course guard only
+
+        const unlocked = await Lesson.isUnlockedForUser(userId, req.params.id);
+        if (!unlocked) {
+            return res.status(403).json({
+                success: false,
+                code: 'LESSON_LOCKED',
+                message: 'Hoàn thành bài học trước đó (đạt ≥ 70%) để mở bài này.',
+            });
+        }
+        return next();
+    } catch (error) {
+        console.error('Lesson-level unlock check failed:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+}
+
 module.exports = {
     checkCourseUnlocked,
     checkLessonCourseUnlocked,
+    checkLessonUnlocked,
 };

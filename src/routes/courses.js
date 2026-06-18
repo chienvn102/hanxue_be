@@ -8,6 +8,7 @@ const { checkCourseUnlocked } = require('../middleware/courseUnlock.middleware')
 // Public routes (or authenticated user)
 router.get('/', authMiddleware, courseController.getCourses);
 router.get('/:id', authMiddleware, checkCourseUnlocked, courseController.getCourse);
+router.get('/:id/final-exam', authMiddleware, checkCourseUnlocked, courseController.getCourseFinalExam);
 
 const adminMiddleware = require('../middleware/admin.middleware');
 

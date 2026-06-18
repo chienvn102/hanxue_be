@@ -13,6 +13,7 @@ const pushService = require('../services/push.service');
 const db = require('../config/database');
 const hskWritingGrader = require('../services/hskWritingGrader.service');
 const pinyinService = require('../services/pinyin.service');
+const Course = require('../models/course.model');
 
 async function broadcastNewExam(exam) {
     if (!exam || !exam.hsk_level || !exam.id) return;
@@ -552,6 +553,16 @@ async function finishExam(req, res) {
             }
         } catch (e) {
             console.error('Streak/XP update failed (non-blocking):', e);
+        }
+
+        // If this exam is a course's final exam and was just passed, refresh
+        // course completion so the next course unlocks (non-blocking).
+        try {
+            if (result.isPassed && attempt.exam_id) {
+                await Course.onFinalExamPassed(userId, attempt.exam_id);
+            }
+        } catch (e) {
+            console.error('Course final-exam completion refresh failed (non-blocking):', e);
         }
 
         res.json({ success: true, result });

@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const lessonController = require('../controllers/lesson.controller');
+const lessonQuizController = require('../controllers/lessonQuiz.controller');
 const { authMiddleware, optionalAuth } = require('../middleware/auth');
 const {
     checkCourseUnlocked,
     checkLessonCourseUnlocked,
+    checkLessonUnlocked,
 } = require('../middleware/courseUnlock.middleware');
 const roleMiddleware = require('../middleware/role.middleware');
 
@@ -18,12 +20,17 @@ router.get('/:id/meta', optionalAuth, lessonController.getLessonMeta);
 router.get('/:id', optionalAuth, checkLessonCourseUnlocked, lessonController.getLessonDetails);
 
 // Textbook lesson — full payload + per-section progress
-router.get('/:id/textbook', optionalAuth, checkLessonCourseUnlocked, lessonController.getTextbookLesson);
+router.get('/:id/textbook', optionalAuth, checkLessonCourseUnlocked, checkLessonUnlocked, lessonController.getTextbookLesson);
 
 // Authenticated user routes
 router.post('/:id/progress', authMiddleware, checkLessonCourseUnlocked, lessonController.updateLessonProgress);
-router.post('/:id/section-done', authMiddleware, checkLessonCourseUnlocked, lessonController.markSectionDone);
+router.post('/:id/section-done', authMiddleware, checkLessonCourseUnlocked, checkLessonUnlocked, lessonController.markSectionDone);
 router.post('/writing/:exerciseId/submit', authMiddleware, lessonController.submitWritingExercise);
+
+// Lesson quiz (vocab + grammar) — anti-cheat session in lessonQuiz.controller
+router.post('/:id/quiz/start', authMiddleware, checkLessonCourseUnlocked, checkLessonUnlocked, lessonQuizController.startQuiz);
+router.post('/:id/quiz/answer', authMiddleware, lessonQuizController.answerQuiz);
+router.post('/:id/quiz/finish', authMiddleware, lessonQuizController.finishQuiz);
 
 const adminMiddleware = require('../middleware/admin.middleware');
 
