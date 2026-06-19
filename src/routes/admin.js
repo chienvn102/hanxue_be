@@ -7,6 +7,7 @@ const adminUserController = require('../controllers/adminUser.controller');
 const grammarQuizAdminController = require('../controllers/grammarQuizAdmin.controller');
 const lessonController = require('../controllers/lesson.controller');
 const hskExamController = require('../controllers/hskExam.controller');
+const adminAnalyticsController = require('../controllers/adminAnalytics.controller');
 
 // Public admin routes
 router.post('/login', adminAuthController.login);
@@ -14,6 +15,7 @@ router.post('/login', adminAuthController.login);
 // Protected admin routes
 router.get('/me', adminMiddleware, adminAuthController.getMe);
 router.get('/stats', adminMiddleware, adminAuthController.getStats);
+router.get('/analytics', adminMiddleware, adminAnalyticsController.getAnalytics);
 router.get('/users', adminMiddleware, adminUserController.listUsers);
 router.get('/users/stats', adminMiddleware, adminUserController.getUserStats);
 router.get('/jobs/:jobId', adminMiddleware, audioGenController.getJob);
