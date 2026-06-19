@@ -19,9 +19,9 @@ function lockedResponse(res, progress) {
     });
 }
 
-// Gating được tắt — học viên truy cập được mọi khóa/bài không cần hoàn thành
-// khóa trước. Bật lại bằng cách đặt env COURSE_UNLOCK_ENFORCEMENT=true.
-const UNLOCK_ENFORCED = process.env.COURSE_UNLOCK_ENFORCEMENT === 'true';
+// Gating BẬT mặc định — học viên phải hoàn thành khóa/bài trước mới mở khóa kế.
+// Tắt bằng cách đặt env COURSE_UNLOCK_ENFORCEMENT=false.
+const UNLOCK_ENFORCED = process.env.COURSE_UNLOCK_ENFORCEMENT !== 'false';
 
 async function assertCourseUnlocked(req, res, next, courseId) {
     try {
