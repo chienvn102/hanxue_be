@@ -25,11 +25,17 @@ load_dotenv()
 
 # ==================== CẤU HÌNH ====================
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')  # Thêm vào .env
+def required_env(name):
+    value = os.getenv(name)
+    if not value:
+        raise ValueError(f"{name} is not configured in .env")
+    return value
+
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'user': os.getenv('DB_USER', 'root'),
+    'host': required_env('DB_HOST'),
+    'user': required_env('DB_USER'),
     'password': os.getenv('DB_PASSWORD', ''),
-    'database': os.getenv('DB_NAME', 'hanxue_db'),
+    'database': required_env('DB_NAME'),
     'charset': 'utf8mb4'
 }
 

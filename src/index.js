@@ -24,10 +24,15 @@ app.use(helmet({
 }));
 
 // CORS configuration
+const configuredCorsOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
 const corsOptions = {
     origin: process.env.CORS_ORIGIN === '*'
         ? '*'
-        : (process.env.CORS_ORIGIN || 'http://localhost:3000').split(','),
+        : configuredCorsOrigins,
     credentials: process.env.CORS_ORIGIN !== '*'
 };
 app.use(cors(corsOptions));

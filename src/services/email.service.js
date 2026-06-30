@@ -85,6 +85,16 @@ function getFromAddress() {
     return process.env.RESEND_FROM || process.env.MAIL_FROM || `HanXue <${process.env.GMAIL_USER}>`;
 }
 
+function getFrontendBaseUrl() {
+    if (process.env.APP_URL) return process.env.APP_URL;
+    if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') return '';
+
+    return process.env.CORS_ORIGIN
+        .split(',')
+        .map(origin => origin.trim())
+        .filter(Boolean)[0] || '';
+}
+
 function getPasswordCodeContent(purpose) {
     if (purpose === 'password_change') {
         return {
@@ -191,8 +201,8 @@ async function sendPasswordResetCode(to, code) {
  */
 async function sendSrsDueEmail(user, { dueCount, breakdown }) {
     if (!user?.email) return;
-    const appUrl = process.env.APP_URL || 'https://hanxue.app';
-    const practiceUrl = `${appUrl.replace(/\/$/, '')}/practice`;
+    const appUrl = getFrontendBaseUrl();
+    const practiceUrl = appUrl ? `${appUrl.replace(/\/$/, '')}/practice` : '/practice';
     const name = user.displayName || 'bạn';
 
     const parts = [];

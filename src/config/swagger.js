@@ -1,5 +1,17 @@
 const swaggerJsdoc = require('swagger-jsdoc');
 
+function getSwaggerServers() {
+    const serverUrls = process.env.SWAGGER_SERVER_URLS || process.env.API_PUBLIC_URL || '';
+    return serverUrls
+        .split(',')
+        .map(url => url.trim())
+        .filter(Boolean)
+        .map((url, index) => ({
+            url,
+            description: index === 0 ? 'Configured' : `Configured ${index + 1}`,
+        }));
+}
+
 const options = {
     definition: {
         openapi: '3.0.0',
@@ -11,10 +23,7 @@ const options = {
                 name: 'HanXue Team',
             },
         },
-        servers: [
-            { url: 'http://localhost:3636', description: 'Development' },
-            { url: 'https://api.hanxue.io.vn/hanxue', description: 'Production' },
-        ],
+        servers: getSwaggerServers(),
         tags: [
             { name: 'Auth', description: 'Authentication endpoints' },
             { name: 'Vocabulary', description: 'Vocabulary management' },
